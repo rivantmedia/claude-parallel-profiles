@@ -16,6 +16,10 @@
 - The account watcher notices Keychain changes on macOS (sign-in or sign-out inside a window) by polling the keychain database's modification time and comparing an attributes-only fingerprint of the window's item. It never reads the secret to do this.
 - The uninstall hook runs on macOS too. It hands the last-used account back to the `Claude Code-credentials` item and deletes every Keychain item belonging to the extension's directories.
 
+### Changed
+
+- **New icon**: three stacked sparks, flat, in Claude's colour palette, set on Rivant Media's brand ground: void black, the faded slate grid and the rings shape, signed "by" with the official Rivant logo. The spark is an original drawing, not Anthropic's logo. It ships at 256×256 for high-DPI displays.
+
 ### Fixed
 
 - **Uninstall never deletes a profile you made yourself.** A `~/.claude-<name>` directory the extension found and adopted (say, from running `CLAUDE_CONFIG_DIR=~/.claude-work claude`) used to be deleted on uninstall, together with its settings and token. Stores are now recorded as *created* or *adopted* (created ones also carry a marker file, so every window agrees), and only created ones are deleted. Adopted ones keep everything, and their history links are pointed at `~/.claude`. Entries from before 1.4.0 count as created only if they hold nothing but what the extension puts in a store. This affects Linux too.
