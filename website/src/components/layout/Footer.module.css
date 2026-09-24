@@ -1,0 +1,132 @@
+/* ------------------------------------------------------------ link hover */
+
+/* A hairline draws in under the label, anchored left, on hover and focus. */
+.label {
+	background-image: linear-gradient(currentColor, currentColor);
+	background-repeat: no-repeat;
+	background-position: 0 100%;
+	background-size: 0% 1px;
+	padding-bottom: 2px;
+	transition: background-size 600ms var(--ease-spring);
+}
+
+.link:hover .label,
+.link:focus-visible .label {
+	background-size: 100% 1px;
+}
+
+/* ------------------------------------------------------------- wordmark */
+
+/*
+ * The wordmark box is the size query container, so the letters scale with the
+ * content width (cqw ignores the body's scrollbar, unlike vw). Only the y axis
+ * is clipped: the bottom crop is the sign-off, it hides the letters before
+ * they rise, and it keeps the brand shape (positioned against this box) inside
+ * the band above the letters.
+ */
+.wordmark {
+	position: relative;
+	container-type: inline-size;
+	overflow-x: visible;
+	overflow-y: clip;
+	user-select: none;
+}
+
+/*
+ * RIVANT in Montserrat 900 measures 4.145em, so 24cqw leaves a sliver of free
+ * space and space-between pins the first and last letter to the content edges
+ * whatever the exact glyph widths are. The negative start margin cancels the
+ * R's side bearing so its stem sits on the gutter line. line-height ≈ cap
+ * height so the box hugs the capitals; the negative bottom margin pushes the
+ * lower part of each letter below the clip edge.
+ */
+.word {
+	display: flex;
+	justify-content: space-between;
+	margin-inline-start: -0.05em;
+	margin-bottom: -0.14em;
+	color: var(--color-paper);
+	font-family: var(--font-display);
+	font-size: 24cqw;
+	font-weight: 900;
+	line-height: 0.74;
+	letter-spacing: 0;
+}
+
+/*
+ * Each letter rises from below the clip with a small stagger, eased out by
+ * squaring the remaining distance. --progress falls back to 1 so the letters
+ * sit in place without JavaScript.
+ *
+ * The resting state is only partly hidden (60% travel, faded rather than
+ * invisible): if --progress is ever stale (a programmatic jump to the
+ * bottom), that should cost the flourish, not the wordmark; the tops of the
+ * letters always show above the crop.
+ */
+.letter {
+	--lp: clamp(0, calc(var(--progress, 1) * 1.5 - var(--i, 0) * 0.1), 1);
+	--rest: calc((1 - var(--lp)) * (1 - var(--lp)));
+	display: block;
+	opacity: calc(0.35 + var(--lp) * 0.65);
+	transform: translate3d(0, calc(var(--rest) * 60%), 0)
+		rotate(calc(var(--rest) * 6deg));
+	transform-origin: 0 100%;
+	transition: font-weight 650ms var(--ease-spring);
+}
+
+/*
+ * The page scrolls natively everywhere (no smooth-scroll library), and the
+ * letters are only on screen for the last few dozen pixels of the page, so a
+ * wheel notch or a flick can cross the whole progress range in a frame or
+ * two. Transitioning the transform turns that jump into a glide: every
+ * progress update retargets the transition from wherever the letter is,
+ * which reads as the letters catching up and settling.
+ */
+.letter {
+	transition:
+		transform 900ms var(--ease-out-expo),
+		opacity 900ms var(--ease-out-expo),
+		font-weight 650ms var(--ease-spring);
+}
+
+/*
+ * The tilt lives on an inner span: the letter's own transform is the scroll
+ * rise, and transitioning that would make the rise lag behind the scroll.
+ */
+.glyph {
+	display: inline-block;
+	transform-origin: 50% 90%;
+	transition: transform 650ms var(--ease-spring);
+}
+
+/*
+ * Hover thins a letter and tilts it into italic, the hero's accordion played
+ * in reverse; space-between lets its neighbours glide into the freed space.
+ * The tilt is a skew to the italic angle, so it morphs rather than snapping to
+ * the italic face.
+ */
+@media (hover: hover) and (pointer: fine) {
+	.letter:hover {
+		font-weight: 200;
+	}
+
+	.letter:hover .glyph {
+		transform: skewX(var(--italic-angle));
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.label {
+		transition: none;
+	}
+
+	.letter {
+		opacity: 1;
+		transform: none;
+		transition: none;
+	}
+
+	.glyph {
+		transition: none;
+	}
+}

@@ -1,0 +1,656 @@
+@import "tailwindcss";
+
+/*
+ * Rivant Media's design system (rivant.in, brand v2.1.0), rebuilt without
+ * StringTune for a static site. The scroll layer that drives it lives in
+ * src/components/providers/Motion.tsx: it writes --progress on
+ * [data-progress] elements and data-inview on [data-reveal] elements, and adds
+ * html.js-ready. Every hidden state below is gated by html.js-ready, so
+ * nothing is lost without JavaScript, and everything is simply there under
+ * prefers-reduced-motion (see the block at the end).
+ */
+
+/* ------------------------------------------------------------------ tokens */
+
+@theme {
+	/* Monochrome: the brand's nine greys, void to paper. Contrast comes from
+	   weight and light, never hue. */
+	--color-void: #0b0b0b;
+	--color-carbon: #111111;
+	--color-graphite: #171717;
+	--color-slate: #232323;
+	--color-smoke: #474747;
+	--color-ash: #8a8a8a;
+	--color-mist: #a7a7a7;
+	--color-bone: #d7d7d7;
+	--color-paper: #f7f7f7;
+
+	/*
+	 * The project's sub-brand: the three sparks of its icon. A signal, not a
+	 * paint: spark art, small "live" indicators, at most one accent word or
+	 * rule per screen. Never body text, never a large fill. Spark is 6.2:1 on
+	 * void, so it may carry large or bold text and UI; ember and rust are
+	 * for the art only.
+	 */
+	--color-spark: #d97757;
+	--color-ember: #b8603f;
+	--color-rust: #8a4530;
+
+	/* Brand fonts: Montserrat (headings), Inter (body), Blackout (style, for
+	   faint background type only). Mono is the system's, for commands. */
+	--font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+	--font-display:
+		var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+	--font-style: var(--font-blackout), var(--font-montserrat), sans-serif;
+	--font-mono:
+		ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas,
+		"Liberation Mono", "Courier New", monospace;
+
+	/* Type roles. Fluid so there is no dead zone between breakpoints. */
+	--text-hero: clamp(3rem, 10.4vw, 11rem);
+	--text-hero--line-height: 0.86;
+	--text-hero--letter-spacing: -0.045em;
+	--text-display: clamp(2.6rem, 7vw, 7rem);
+	--text-display--line-height: 0.92;
+	--text-display--letter-spacing: -0.035em;
+	--text-title: clamp(1.75rem, 3.4vw, 3.25rem);
+	--text-title--line-height: 1.05;
+	--text-title--letter-spacing: -0.02em;
+	--text-lead: clamp(1.125rem, 1.35vw, 1.4rem);
+	--text-lead--line-height: 1.55;
+	--text-eyebrow: 0.6875rem;
+	--text-eyebrow--line-height: 1;
+	--text-eyebrow--letter-spacing: 0.22em;
+
+	/* Entrances and reveals / interaction. */
+	--ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+	--ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* -------------------------------------------------------------------- base */
+
+@layer base {
+	/*
+	 * Montserrat's italic is a slanted roman at 11.3deg, and the variable
+	 * font has no slant axis, so toggling font-style swaps faces in a single
+	 * frame. Interactive italics tilt to this angle instead (see .hero-char
+	 * and .slant), which morphs smoothly and matches the real italic at rest.
+	 */
+	:root {
+		--italic-angle: -11.3deg;
+	}
+
+	/* The window scrolls (unlike rivant.in, there is no scroll library that
+	   needs <body> to be the scroller). */
+	html {
+		background-color: var(--color-void);
+		color-scheme: dark;
+		-webkit-text-size-adjust: 100%;
+	}
+
+	body {
+		min-height: 100dvh;
+		overflow-x: clip;
+		background-color: var(--color-void);
+		color: var(--color-paper);
+		font-family: var(--font-sans);
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+	}
+
+	::selection {
+		background-color: var(--color-paper);
+		color: var(--color-void);
+	}
+
+	:where(
+		a,
+		button,
+		input,
+		textarea,
+		select,
+		summary,
+		[tabindex]
+	):focus-visible {
+		outline: 2px solid var(--color-paper);
+		outline-offset: 3px;
+	}
+
+	/* <main> receives programmatic focus from the skip link; an outline
+	   around the whole page would only be noise. */
+	[tabindex="-1"]:focus {
+		outline: none;
+	}
+
+	h1,
+	h2,
+	h3,
+	h4 {
+		font-family: var(--font-display);
+		text-wrap: balance;
+	}
+
+	p,
+	li,
+	dd {
+		text-wrap: pretty;
+	}
+
+	code,
+	kbd,
+	samp,
+	pre {
+		font-family: var(--font-mono);
+	}
+}
+
+/* Anchor jumps glide, unless the reader asked for less motion. Next reads
+   data-scroll-behavior on <html> to turn this off during route changes. */
+@media (prefers-reduced-motion: no-preference) {
+	html {
+		scroll-behavior: smooth;
+	}
+}
+
+/* ----------------------------------------------------------------- chrome */
+
+.skip-link {
+	position: fixed;
+	top: 1rem;
+	left: 1rem;
+	z-index: 70;
+	border-radius: 9999px;
+	background-color: var(--color-paper);
+	padding: 0.75rem 1.25rem;
+	color: var(--color-void);
+	font-weight: 600;
+	transform: translateY(-200%);
+}
+
+.skip-link:focus {
+	transform: none;
+}
+
+/* Static film grain. Fixed and pointer-events-none so it never repaints on
+   scroll. */
+.grain {
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	pointer-events: none;
+	opacity: 0.06;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ------------------------------------------------------- progressive blur */
+
+/*
+ * Edge blur (see ProgressiveBlur): content dissolves into the top and bottom
+ * of the viewport rather than being cut off. Above the page, below the nav.
+ * The bottom edge waits for html[data-scrolled] (set by the navbar) so it
+ * never softens the hero's calls to action on arrival.
+ */
+.progressive-blur {
+	--size: 5.5rem;
+	position: fixed;
+	inset-inline: 0;
+	z-index: 20;
+	height: var(--size);
+	pointer-events: none;
+	transition: opacity 700ms var(--ease-out-expo);
+}
+
+.progressive-blur[data-side="top"] {
+	top: 0;
+}
+
+.progressive-blur[data-side="bottom"] {
+	--size: 4.5rem;
+	bottom: 0;
+	opacity: 0;
+}
+
+html[data-scrolled] .progressive-blur[data-side="bottom"] {
+	opacity: 1;
+}
+
+/* ...and leaves again at the very end, so the footer's sign-off wordmark,
+   cropped by the bottom edge on purpose, lands crisp. */
+html[data-scrolled][data-at-end] .progressive-blur[data-side="bottom"] {
+	opacity: 0;
+}
+
+@media (min-width: 48rem) {
+	.progressive-blur {
+		--size: 7rem;
+	}
+
+	.progressive-blur[data-side="bottom"] {
+		--size: 5.5rem;
+	}
+}
+
+.progressive-blur > span {
+	position: absolute;
+	inset: 0;
+	-webkit-backdrop-filter: blur(var(--b));
+	backdrop-filter: blur(var(--b));
+	-webkit-mask-image: var(--mask);
+	mask-image: var(--mask);
+}
+
+/* A void tint under the blur keeps the edge (and the nav over it) legible. */
+.progressive-blur::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(
+		var(--tint-dir, to bottom),
+		rgb(11 11 11 / 0.7),
+		transparent
+	);
+}
+
+.progressive-blur[data-side="bottom"]::after {
+	--tint-dir: to top;
+}
+
+/* --------------------------------------------------------------- parallax */
+
+/*
+ * Progress-driven parallax (see Parallax). --progress runs 0 -> 1 while the
+ * element crosses the viewport; the resting place is at 0.5, so a layer sits
+ * where it was designed halfway through its pass and drifts either side.
+ * Before the scroll layer runs, 0.5 keeps every layer at rest.
+ */
+.parallax {
+	--p: var(--progress, 0.5);
+	transform: translate3d(0, calc((var(--p) - 0.5) * var(--depth, 0px)), 0)
+		rotate(calc((var(--p) - 0.5) * var(--rotate, 0deg)))
+		scale(
+			calc(
+				var(--scale-from, 1) +
+					(var(--scale-to, 1) - var(--scale-from, 1)) * var(--p)
+			)
+		);
+}
+
+/* Depth of field for Parallax's `blur` prop: sharp at rest, softer with
+   distance from it. */
+.parallax-dof {
+	filter: blur(
+		calc(max(var(--p) - 0.5, 0.5 - var(--p)) * 2 * var(--dof, 0px))
+	);
+}
+
+/* ----------------------------------------------------------- text reveals */
+
+/*
+ * SplitText renders each word as .reveal-word (and, with by="char", each
+ * letter as .reveal-char) with its --word-index / --char-index, and hides
+ * them from assistive tech behind one visually hidden copy of the text.
+ * The host is .reveal[data-reveal]; the scroll layer adds data-inview once
+ * it enters the viewport.
+ */
+.reveal-word,
+.reveal-char {
+	display: inline-block;
+}
+
+html.js-ready .reveal .reveal-word {
+	opacity: 0;
+	transform: translate3d(0, 0.55em, 0);
+	filter: blur(10px);
+	transition:
+		opacity 900ms var(--ease-out-expo),
+		transform 1100ms var(--ease-out-expo),
+		filter 1100ms var(--ease-out-expo);
+	transition-delay: calc(var(--delay, 0ms) + var(--word-index, 0) * 55ms);
+}
+
+html.js-ready .reveal.reveal-chars .reveal-word {
+	opacity: 1;
+	transform: none;
+	filter: none;
+}
+
+html.js-ready .reveal.reveal-chars .reveal-char {
+	opacity: 0;
+	transform: translate3d(0, 0.45em, 0) rotate(5deg);
+	filter: blur(6px);
+	transition:
+		opacity 800ms var(--ease-out-expo),
+		transform 1000ms var(--ease-out-expo),
+		filter 1000ms var(--ease-out-expo);
+	transition-delay: calc(var(--delay, 0ms) + var(--char-index, 0) * 18ms);
+}
+
+/*
+ * Long text (past SplitText's LONG_TEXT_WORDS). The stagger is spread over a
+ * fixed 300ms however many words there are, with a shorter, lighter move, so
+ * a paragraph is readable almost as soon as it arrives. Must stay above the
+ * [data-inview] rule, which has the same specificity.
+ */
+html.js-ready .reveal.reveal-long .reveal-word {
+	transform: translate3d(0, 0.3em, 0);
+	filter: blur(5px);
+	transition-duration: 500ms, 600ms, 600ms;
+	transition-delay: calc(
+		var(--delay, 0ms) + var(--word-index, 0) / var(--word-total, 1) * 300ms
+	);
+}
+
+html.js-ready .reveal[data-inview] .reveal-word,
+html.js-ready .reveal[data-inview] .reveal-char {
+	opacity: 1;
+	transform: none;
+	filter: blur(0);
+}
+
+/*
+ * Scrubbed reveal: words brighten in sequence as the wrapper's --progress
+ * advances, so type lights up as it is read. The window (0.18 -> 0.60 of the
+ * pass) finishes around the middle of the viewport; override --scrub on the
+ * wrapper to move it.
+ */
+.reveal-scrub {
+	--scrub: clamp(0, calc((var(--progress, 1) - 0.18) / 0.42), 1);
+}
+
+html.js-ready .reveal-scrub .reveal-word {
+	--lit: clamp(
+		0,
+		calc(
+			(
+					var(--scrub) * (var(--word-total, 12) + 3) -
+						var(--word-index, 0)
+				) /
+				3
+		),
+		1
+	);
+	opacity: max(0.14, var(--lit));
+	filter: blur(calc((1 - var(--lit)) * 5px));
+	transition:
+		opacity 160ms linear,
+		filter 160ms linear;
+}
+
+/*
+ * Block reveal for anything that isn't split text (cards, figures, rows):
+ * <Reveal> or any [data-reveal].reveal-up rises and sharpens into place.
+ * Stagger siblings with --delay.
+ */
+html.js-ready .reveal-up {
+	opacity: 0;
+	transform: translate3d(0, 1.5rem, 0);
+	filter: blur(8px);
+	transition:
+		opacity 900ms var(--ease-out-expo),
+		transform 1100ms var(--ease-out-expo),
+		filter 1100ms var(--ease-out-expo);
+	transition-delay: var(--delay, 0ms);
+}
+
+html.js-ready .reveal-up[data-inview] {
+	opacity: 1;
+	transform: none;
+	filter: none;
+}
+
+/*
+ * Hairline rules draw as sections arrive (see Rule). One-shot on entry
+ * (.rule-draw[data-inview]) or scrubbed with the scroll
+ * (.rule-scrub[data-progress]). Both grow from the left.
+ */
+.rule-draw,
+.rule-scrub {
+	transform-origin: left center;
+}
+
+html.js-ready .rule-draw {
+	transform: scaleX(0);
+	transition: transform 1400ms var(--ease-out-expo);
+	transition-delay: var(--delay, 0ms);
+}
+
+html.js-ready .rule-draw[data-inview] {
+	transform: none;
+}
+
+.rule-scrub {
+	transform: scaleX(clamp(0, calc((var(--progress, 1) - 0.12) / 0.3), 1));
+}
+
+/* ---------------------------------------------------------------- marquee */
+
+@keyframes marquee {
+	to {
+		transform: translate3d(-100%, 0, 0);
+	}
+}
+
+.marquee-track {
+	animation: marquee var(--duration, 40s) linear infinite;
+	animation-direction: var(--direction, normal);
+}
+
+/* Paused for a mouse that is really moving over it; [data-engaged] is set by
+   Marquee, so a loop scrolling under a resting pointer keeps running. */
+.marquee[data-engaged]:hover .marquee-track {
+	animation-play-state: paused;
+}
+
+/*
+ * Hollow display type (the band's light italic row). Montserrat's variable
+ * glyphs are built from overlapping contours, and a bare text stroke draws
+ * every one of them (the A's crossbar as a box across its legs, notches at
+ * the R, N and V joins). A void fill painted over the stroke hides those
+ * inner lines along with the inner half of the stroke, so the width is
+ * doubled to keep the same visible hairline. The stroke is opaque, pre-mixed
+ * to what 52% paper over void looks like, so overlaps can't stack. Only for
+ * type set on the void ground.
+ */
+.text-hollow {
+	color: var(--color-void);
+	paint-order: stroke fill;
+	-webkit-text-stroke: clamp(3px, 0.02em, 5px)
+		color-mix(in srgb, var(--color-paper) 52%, var(--color-void));
+}
+
+/* -------------------------------------------------------------- magnetic */
+
+/* The scroll layer writes --magnetic-x/y (unitless px) on [data-magnetic]
+   elements near a fine pointer. `translate` is separate from `transform`, so
+   it never fights an element's own transform or scale. */
+[data-magnetic] {
+	translate: calc(var(--magnetic-x, 0) * 1px) calc(var(--magnetic-y, 0) * 1px);
+	transition: translate 400ms var(--ease-spring);
+}
+
+/* ------------------------------------------------------------------- hero */
+
+/*
+ * Letter accordion. A hero headline writes --w (weight) and --s (slant, 0-1)
+ * per letter from the pointer position. Montserrat's glyphs widen with
+ * weight, so a swollen letter pushes its neighbours apart, and it tilts into
+ * italic about its baseline (see --italic-angle) instead of snapping to the
+ * italic face. The entrance animates the separate `translate` property so it
+ * never fights the tilt's `transform`. Stagger with --i.
+ */
+.hero-char {
+	display: inline-block;
+	font-weight: var(--w, 300);
+	transform: skewX(calc(var(--s, 0) * var(--italic-angle)));
+	transform-origin: 50% 92%;
+	transition:
+		font-weight 650ms var(--ease-spring),
+		transform 650ms var(--ease-spring);
+	animation: hero-rise 1300ms var(--ease-out-expo) both;
+	animation-delay: calc(180ms + var(--i, 0) * 45ms);
+}
+
+@keyframes hero-rise {
+	from {
+		opacity: 0;
+		translate: 0 0.35em;
+		filter: blur(12px);
+	}
+}
+
+/* Hover italics elsewhere: --slant 0 -> 1 tilts the text to the italic
+   angle. */
+.slant {
+	display: inline-block;
+	transform: skewX(calc(var(--slant, 0) * var(--italic-angle)));
+	transform-origin: 0 90%;
+	transition: transform 700ms var(--ease-spring);
+}
+
+/* Hero content eases out as the hero scrolls away (put it on an element
+   with data-progress). */
+.hero-exit {
+	opacity: clamp(0, calc((1 - var(--progress, 0.3)) * 2.2), 1);
+	transform: translate3d(0, calc((var(--progress, 0.3) - 0.3) * -140px), 0);
+}
+
+/* Page-load entrance for above-the-fold content. Stagger with --delay. */
+.fade-up {
+	animation: fade-up 1200ms var(--ease-out-expo) both;
+	animation-delay: var(--delay, 0ms);
+}
+
+@keyframes fade-up {
+	from {
+		opacity: 0;
+		transform: translate3d(0, 1.5rem, 0);
+		filter: blur(8px);
+	}
+}
+
+@keyframes scroll-cue {
+	0% {
+		transform: scaleY(0);
+		transform-origin: top;
+	}
+	45% {
+		transform: scaleY(1);
+		transform-origin: top;
+	}
+	55% {
+		transform: scaleY(1);
+		transform-origin: bottom;
+	}
+	100% {
+		transform: scaleY(0);
+		transform-origin: bottom;
+	}
+}
+
+.scroll-cue {
+	animation: scroll-cue 2.4s var(--ease-spring) infinite;
+}
+
+/* --------------------------------------------------------------- sparks */
+
+/*
+ * A slow turn for spark art (SparkTrio's `turn`). Sparks turn, they never
+ * bounce or morph. Meant for an SVG group whose local origin is the spark's
+ * centre (SparkTrio translates an outer group there), so it turns about 0 0
+ * in that group's own user space.
+ */
+@keyframes spark-turn {
+	to {
+		rotate: 360deg;
+	}
+}
+
+.spark-turn {
+	transform-box: view-box;
+	transform-origin: 0 0;
+	animation: spark-turn var(--turn, 90s) linear infinite;
+	animation-direction: var(--turn-direction, normal);
+}
+
+/* A small live indicator (the active account, the hero eyebrow): the spark
+   colour with a soft pulse ring. */
+@keyframes live-pulse {
+	0% {
+		transform: scale(1);
+		opacity: 0.55;
+	}
+	70%,
+	100% {
+		transform: scale(2.6);
+		opacity: 0;
+	}
+}
+
+.live-dot {
+	position: relative;
+	display: inline-block;
+	width: 0.4375rem;
+	height: 0.4375rem;
+	border-radius: 9999px;
+	background-color: var(--color-spark);
+}
+
+.live-dot::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	background-color: inherit;
+	animation: live-pulse 2.4s var(--ease-out-expo) infinite;
+}
+
+/* --------------------------------------------------------- reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+	.parallax,
+	.hero-exit {
+		transform: none !important;
+	}
+
+	.hero-exit {
+		opacity: 1 !important;
+	}
+
+	html.js-ready .reveal .reveal-word,
+	html.js-ready .reveal .reveal-char,
+	html.js-ready .reveal-scrub .reveal-word,
+	html.js-ready .reveal-up,
+	html.js-ready .rule-draw {
+		opacity: 1 !important;
+		transform: none !important;
+		filter: none !important;
+		transition: none !important;
+	}
+
+	.rule-scrub {
+		transform: none !important;
+	}
+
+	.parallax-dof {
+		filter: none !important;
+	}
+
+	.marquee-track,
+	.hero-char,
+	.fade-up,
+	.scroll-cue,
+	.spark-turn,
+	.live-dot::after {
+		animation: none !important;
+	}
+
+	.hero-char,
+	[data-magnetic],
+	.slant {
+		transition: none !important;
+	}
+
+	[data-magnetic] {
+		translate: none !important;
+	}
+}
