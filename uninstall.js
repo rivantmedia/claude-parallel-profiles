@@ -21,18 +21,28 @@
 //   b. Never lose history.                           (deadline + no destructive step before its data is safe)
 //   c. Leave Claude Code signed in and working.      (hand the account back first)
 //   d. Leave no OAuth token behind.                  (tokens go even when (b) forces us to stop early)
-//   e. Leave no leftover directories.                (only when everything above succeeded)
+//   e. Leave no leftover directories it created.     (only when everything above succeeded;
+//                                                     a dir the user made is never deleted)
 //
 // Vanilla Claude Code (CLAUDE_CONFIG_DIR unset) reads its token from
 // ~/.claude/.credentials.json and its identity from ~/.claude.json at the HOME
 // ROOT — verified empirically, and NOT the layout of a CLAUDE_CONFIG_DIR account,
 // where both sit inside the dir. Restoring to the wrong one leaves Claude Code
 // silently signed out, which is the bug this hook exists to prevent.
+//
+// On macOS the token is not a file but a login-Keychain item whose name is derived
+// from the dir (see src/credentials.ts — the rules are duplicated below, because
+// this script runs as bare `node` and cannot import the bundle). Vanilla Claude
+// Code's item is "Claude Code-credentials".
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
+const { spawnSync } = require('child_process');
+
+const MAC = os.platform() === 'darwin';
 
 /** Kept in sync with SHARED_DIRS + SHARED_FILES in src/sharedHistory.ts. */
 const SHARED_DIRS = [
@@ -56,6 +66,13 @@ const SHARED_ENTRIES = [...SHARED_DIRS, ...SHARED_FILES];
 const DEADLINE_MS = 4000;
 let deadline = Infinity;
 const outOfTime = () => Date.now() > deadline;
+/**
+ * The token deletions come last and may run a little past DEADLINE_MS — they are
+ * the one step that must happen even when the rest bailed out — but never into
+ * VSCode's kill: each is one short `security` call, and none starts after this.
+ */
+const TOKEN_GRACE_MS = 600;
+const outOfTokenTime = () => Date.now() > deadline + TOKEN_GRACE_MS;
 
 /**
  * True if a DIFFERENT copy of this extension is still installed.
@@ -75,7 +92,10 @@ function anotherCopyInstalled() {
     const root = path.dirname(__dirname); // …/extensions
     const me = path.basename(__dirname); // publisher.name-version[-target]
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8'));
-    const prefix = `${pkg.publisher}.${pkg.name}-`.toLowerCase();
+    // This copy's own id, and the original extension this one is a fork of: both
+    // run on the very same dirs (~/.claude-windows, ~/.claude-shared, the stores),
+    // so while EITHER is still installed, that data is live and must be left be.
+    const prefixes = [`${pkg.publisher}.${pkg.name}-`.toLowerCase(), 'dercasdrol.claude-parallel-accounts-'];
     let obsolete = {};
     try {
       obsolete = JSON.parse(fs.readFileSync(path.join(root, '.obsolete'), 'utf-8')) || {};
@@ -86,7 +106,7 @@ function anotherCopyInstalled() {
       (e) =>
         e.isDirectory() &&
         e.name !== me &&
-        e.name.toLowerCase().startsWith(prefix) &&
+        prefixes.some((prefix) => e.name.toLowerCase().startsWith(prefix)) &&
         !obsolete[e.name]
     );
   } catch {
@@ -94,6 +114,183 @@ function anotherCopyInstalled() {
     // deleting a live install's accounts is a catastrophe.
     return true;
   }
+}
+
+// ─── The token of a dir: a file on Linux, a Keychain item on macOS ─────────────
+// Kept in step with src/credentials.ts.
+
+const TOKEN_FILE = '.credentials.json';
+const NOT_FOUND = 44; // errSecItemNotFound
+const TRANSIENT = new Set([null, 36, 128]); // timed out, locked/no UI, prompt dismissed
+
+/** By location, not spelling: resolve() also drops a trailing slash. */
+function isDefaultDir(dir) {
+  return path.resolve(dir) === path.resolve(os.homedir(), '.claude');
+}
+
+/**
+ * What the extension recorded about how Claude Code names its Keychain items
+ * (see writeManifest in src/accounts.ts): settings like a custom OAuth URL may
+ * reach Claude Code from VSCode's own configuration, which this bare `node`
+ * process can't see. Its own environment is only the fallback.
+ */
+let naming = {};
+
+/**
+ * CLAUDE_CONFIG_DIR, when the environment sets it to the default dir itself. Claude
+ * Code then treats ~/.claude like any other dir: hashed Keychain name, identity
+ * inside the dir rather than in ~/.claude.json.
+ */
+function explicitDefaultDir() {
+  if (naming.defaultConfigDir !== undefined) return naming.defaultConfigDir || undefined;
+  const v = process.env.CLAUDE_CONFIG_DIR;
+  return v && isDefaultDir(v) ? v : undefined;
+}
+
+function keychainService(dir) {
+  const custom =
+    naming.customOAuth !== undefined ? naming.customOAuth : Boolean(process.env.CLAUDE_CODE_CUSTOM_OAUTH_URL);
+  const suffix = custom ? '-custom-oauth' : '';
+  let named = dir;
+  if (isDefaultDir(dir)) {
+    const explicit = explicitDefaultDir();
+    if (!explicit) return `Claude Code${suffix}-credentials`;
+    named = explicit;
+  }
+  const hash = crypto.createHash('sha256').update(named.normalize('NFC')).digest('hex').slice(0, 8);
+  return `Claude Code${suffix}-credentials-${hash}`;
+}
+
+function keychainAccount() {
+  let user;
+  try {
+    user = process.env.USER || os.userInfo().username;
+  } catch {
+    user = 'claude-code-user';
+  }
+  return /^[a-zA-Z0-9._-]+$/.test(user) ? user : 'claude-code-user';
+}
+
+function security(args, input) {
+  const r = spawnSync('/usr/bin/security', args, {
+    input,
+    encoding: 'utf-8',
+    timeout: 1200, // several of these fit comfortably inside the deadline
+    stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+  });
+  return { status: r.status, stdout: r.stdout || '' };
+}
+
+/** A dir's token bytes, or null. Keychain first, then the fallback file — Claude Code's order. */
+function readToken(dir) {
+  if (MAC) {
+    const r = security(['find-generic-password', '-a', keychainAccount(), '-s', keychainService(dir), '-w']);
+    const out = r.status === 0 ? r.stdout.replace(/\r?\n$/, '') : '';
+    if (out) {
+      return !out.startsWith('{') && /^(?:[0-9a-fA-F]{2})+$/.test(out)
+        ? Buffer.from(out, 'hex')
+        : Buffer.from(out, 'utf-8');
+    }
+  }
+  try {
+    return fs.readFileSync(path.join(dir, TOKEN_FILE));
+  } catch {
+    return null;
+  }
+}
+
+function writeTokenFile(dir, data) {
+  const dst = path.join(dir, TOKEN_FILE);
+  const tmp = `${dst}.tmp`;
+  fs.writeFileSync(tmp, data, { mode: 0o600 });
+  fs.chmodSync(tmp, 0o600);
+  fs.renameSync(tmp, dst);
+}
+
+/** Deletes a dir's Keychain item. True when it is gone (deleted, or never there). */
+function deleteKeychainItem(dir) {
+  const { status } = security(['delete-generic-password', '-a', keychainAccount(), '-s', keychainService(dir)]);
+  return status === 0 || status === NOT_FOUND;
+}
+
+/**
+ * Stores a token as `dir`'s, where Claude Code reads it. Throws if it could not —
+ * including when an older token would stay in front of it, since the caller then
+ * must not pair the new identity with it.
+ */
+function writeToken(dir, data) {
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (!MAC) {
+    writeTokenFile(dir, data);
+    return;
+  }
+  const account = keychainAccount();
+  const service = keychainService(dir);
+  const hex = data.toString('hex');
+  const line = `add-generic-password -U -a "${account}" -s "${service}" -X "${hex}"\n`;
+  const { status } =
+    line.length <= 4032
+      ? security(['-i'], line)
+      : security(['add-generic-password', '-U', '-a', account, '-s', service, '-X', hex]); // as Claude Code does
+  if (status === 0) {
+    fs.rmSync(path.join(dir, TOKEN_FILE), { force: true }); // no stale fallback left behind
+    return;
+  }
+  if (TRANSIENT.has(status)) throw new Error(`Keychain write failed (${status})`);
+  // Keychain unusable: the plaintext fallback, as Claude Code does — only with no
+  // Keychain item left to shadow it.
+  writeTokenFile(dir, data);
+  if (!deleteKeychainItem(dir)) {
+    fs.rmSync(path.join(dir, TOKEN_FILE), { force: true });
+    throw new Error('Keychain write failed and the old item could not be removed');
+  }
+}
+
+/** Deletes a dir's token from everywhere Claude Code could read it. True if it is gone. */
+function deleteToken(dir) {
+  let gone = MAC ? deleteKeychainItem(dir) : true;
+  try {
+    fs.rmSync(path.join(dir, TOKEN_FILE), { force: true });
+  } catch {
+    gone = false;
+  }
+  return gone;
+}
+
+function mtimeOf(file) {
+  try {
+    return fs.statSync(file).mtimeMs;
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * A spawn-free guess at how recently a dir was in use (ms; -1 = never). Linux: the
+ * token file's mtime. macOS: also the config's, which Claude Code touches
+ * whenever it runs there — asking the Keychain would cost a process per dir.
+ */
+function recency(dir) {
+  const token = mtimeOf(path.join(dir, TOKEN_FILE));
+  return MAC ? Math.max(token, mtimeOf(path.join(dir, '.claude.json'))) : token;
+}
+
+/**
+ * When a dir's token was last written (ms), or -1 if it has none: the file's
+ * mtime, or on macOS the Keychain item's modification date (attributes only,
+ * never the secret).
+ */
+function tokenTime(dir) {
+  let best = mtimeOf(path.join(dir, TOKEN_FILE));
+  if (MAC) {
+    const r = security(['find-generic-password', '-a', keychainAccount(), '-s', keychainService(dir)]);
+    if (r.status === 0) {
+      // "mdat"<timedate>=0x…  "20260924171628Z\000"
+      const m = /"mdat"<timedate>=\S*\s+"(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})Z/.exec(r.stdout);
+      best = Math.max(best, m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : 0);
+    }
+  }
+  return best;
 }
 
 /** The per-window working dirs this extension creates (~/.claude-windows/<id>). */
@@ -109,29 +306,72 @@ function workingDirs(root) {
 }
 
 /**
- * The account stores the extension manages, as recorded by the registry.
+ * The account stores the extension manages, as recorded by the registry:
+ * `created` — dirs it made itself, the only ones ever deleted — and `adopted` —
+ * dirs that were already there (a profile the user ran by hand, say) and that it
+ * merely took into its list. Those stay, config and token and all; they only get
+ * their history links pointed back at a place that still exists.
  *
- * Only these are ever deleted. A `~/.claude-<name>` dir NOT in the manifest was
- * made by the user (or another tool) and is none of our business — guessing from
- * the name alone is how an uninstall destroys someone else's data.
+ * A `~/.claude-<name>` dir NOT in the manifest was made by the user (or another
+ * tool) and is none of our business — guessing from the name alone is how an
+ * uninstall destroys someone else's data. So is a manifest from before `created`
+ * was recorded: everything in it counts as adopted.
  */
-function managedStores(home, manifestFile) {
-  let stores;
+const STORE_MARKER = '.parallel-accounts-store';
+
+/** Whether a store entry has left the store: gone, or a dir the move emptied. */
+function movedOut(entry) {
   try {
-    stores = JSON.parse(fs.readFileSync(manifestFile, 'utf-8')).stores;
+    const st = fs.statSync(entry);
+    return st.isDirectory() && fs.readdirSync(entry).length === 0;
   } catch {
-    return []; // no manifest → delete no stores (fail safe)
+    return true;
   }
-  if (!Array.isArray(stores)) return [];
+} // dropped into every store the extension creates
+
+function managedStores(home, manifest) {
+  if (!manifest) return { created: [], adopted: [] }; // no manifest → touch no stores (fail safe)
   const home_ = path.normalize(home);
-  return stores.filter((dir) => {
-    if (typeof dir !== 'string') return false;
-    const norm = path.normalize(dir);
-    if (path.dirname(norm) !== home_) return false;
-    const base = path.basename(norm);
-    if (!/^\.claude[-_].+$/.test(base)) return false;
-    return base !== '.claude-shared' && base !== '.claude-windows';
-  });
+  const valid = (list) =>
+    (Array.isArray(list) ? list : [])
+      .filter((dir) => typeof dir === 'string')
+      .map((dir) => path.normalize(dir))
+      .filter((norm) => {
+        if (path.dirname(norm) !== home_) return false;
+        const base = path.basename(norm);
+        if (!/^\.claude[-_].+$/.test(base)) return false;
+        return base !== '.claude-shared' && base !== '.claude-windows';
+      });
+  const stores = valid(manifest.stores);
+  const listed = new Set(valid(manifest.created));
+  const isCreated = (d) => listed.has(d) || fs.existsSync(path.join(d, STORE_MARKER));
+  return {
+    created: stores.filter(isCreated),
+    adopted: stores.filter((d) => !isCreated(d)),
+  };
+}
+
+/**
+ * Once history moved out of the store into ~/.claude, an adopted dir's links to
+ * it point at nothing. Point them at the same history's new home instead, so that
+ * profile keeps seeing it. `all`: the store is about to be deleted, relink every
+ * entry; otherwise (consolidation stopped early) only entries that already left
+ * the store — gone, or emptied by the move — and the rest keep links that work.
+ */
+function relinkHistory(dir, store, defaultDir, all) {
+  for (const name of SHARED_ENTRIES) {
+    const p = path.join(dir, name);
+    try {
+      const st = fs.lstatSync(p, { throwIfNoEntry: false });
+      if (!st || !st.isSymbolicLink()) continue;
+      if (path.normalize(fs.readlinkSync(p)) !== path.normalize(path.join(store, name))) continue;
+      if (!all && !movedOut(path.join(store, name))) continue; // still there: the link still resolves
+      fs.unlinkSync(p);
+      if (fs.existsSync(path.join(defaultDir, name))) fs.symlinkSync(path.join(defaultDir, name), p);
+    } catch {
+      /* best-effort: Claude Code recreates a missing entry */
+    }
+  }
 }
 
 /**
@@ -272,25 +512,33 @@ function consolidateHistory(defaultDir, store, otherDirs) {
  * Working dirs win over stores when both have one: a working dir is where Claude
  * Code actually ran, so its token is the one that got refreshed and its config is
  * the live one, where a store's config is only a snapshot from when it was saved.
+ *
+ * On macOS each token's age costs a `security` process, and a long-time user has
+ * a working dir per folder ever opened — so only the few most recently used
+ * (by a free stat) are asked; the freshest token is among them.
  */
+const FRESHEST_CANDIDATES = MAC ? 5 : Infinity;
+
 function lastUsedDir(working, stores) {
-  const freshest = (dirs) => {
+  for (const group of [working, stores]) {
+    const ranked = group
+      .map((dir) => ({ dir, t: recency(dir) }))
+      .filter((c) => c.t >= 0 || MAC) // macOS: a token may live only in the Keychain
+      .sort((a, b) => b.t - a.t)
+      .slice(0, FRESHEST_CANDIDATES);
     let best;
     let bestTime = -1;
-    for (const dir of dirs) {
-      try {
-        const t = fs.statSync(path.join(dir, '.credentials.json')).mtimeMs;
-        if (t > bestTime) {
-          bestTime = t;
-          best = dir;
-        }
-      } catch {
-        // no token here — not a candidate
+    for (const { dir } of ranked) {
+      if (outOfTime()) break;
+      const t = tokenTime(dir); // -1: no token here — not a candidate
+      if (t > bestTime) {
+        bestTime = t;
+        best = dir;
       }
     }
-    return best;
-  };
-  return freshest(working) ?? freshest(stores);
+    if (best) return best;
+  }
+  return undefined;
 }
 
 /**
@@ -305,12 +553,9 @@ function lastUsedDir(working, stores) {
  */
 function restoreDefaultAccount(source, defaultDir, defaultConfig) {
   try {
-    const token = path.join(source, '.credentials.json');
-    if (!fs.existsSync(token)) return;
-    fs.mkdirSync(defaultDir, { recursive: true, mode: 0o700 });
-    const dstToken = path.join(defaultDir, '.credentials.json');
-    fs.copyFileSync(token, dstToken);
-    fs.chmodSync(dstToken, 0o600);
+    const token = readToken(source);
+    if (!token) return;
+    writeToken(defaultDir, token); // throws rather than leave the identity below with another token
 
     const cfgFile = path.join(source, '.claude.json');
     if (!fs.existsSync(cfgFile)) return;
@@ -334,15 +579,26 @@ function restoreDefaultAccount(source, defaultDir, defaultConfig) {
   }
 }
 
-/** Deletes the OAuth token from our dirs. The one step that must happen even when we bail out. */
+/**
+ * Deletes the OAuth token from our dirs — the one step that must happen even when
+ * we bail out. Returns the dirs whose token may still be there (a failed Keychain
+ * delete, or out of time): they must NOT be deleted, because on macOS the dir's
+ * path is the only thing its Keychain item's name can be derived from.
+ */
 function dropTokens(dirs) {
+  const kept = [];
   for (const dir of dirs) {
+    if (MAC && outOfTokenTime()) {
+      kept.push(dir);
+      continue;
+    }
     try {
-      fs.rmSync(path.join(dir, '.credentials.json'), { force: true });
+      if (!deleteToken(dir)) kept.push(dir);
     } catch {
-      /* best-effort */
+      kept.push(dir);
     }
   }
+  return kept;
 }
 
 function main() {
@@ -350,7 +606,7 @@ function main() {
   // created anything, so there is nothing to revert — and guessing at other OSes'
   // file layouts on uninstall is exactly the manipulation that mode promises not
   // to do.
-  if (os.platform() !== 'linux') return;
+  if (os.platform() !== 'linux' && !MAC) return;
 
   // A newer copy is live and this data is now ITS data. Touch nothing.
   if (anotherCopyInstalled()) return;
@@ -359,16 +615,32 @@ function main() {
 
   const home = os.homedir();
   const defaultDir = path.join(home, '.claude');
-  const defaultConfig = path.join(home, '.claude.json');
   const store = path.join(home, '.claude-shared');
   const workRoot = path.join(home, '.claude-windows');
 
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(path.join(workRoot, '.manifest.json'), 'utf-8'));
+  } catch {
+    manifest = undefined;
+  }
+  if (manifest && typeof manifest === 'object') {
+    if (typeof manifest.customOAuth === 'boolean') naming.customOAuth = manifest.customOAuth;
+    if ('defaultConfigDir' in manifest) naming.defaultConfigDir = manifest.defaultConfigDir;
+  }
+
+  // Where vanilla Claude Code reads the default account's identity: the home root,
+  // unless the environment sets CLAUDE_CONFIG_DIR to ~/.claude itself.
+  const defaultConfig = explicitDefaultDir()
+    ? path.join(defaultDir, '.claude.json')
+    : path.join(home, '.claude.json');
+
   const working = workingDirs(workRoot);
-  const stores = managedStores(home, path.join(workRoot, '.manifest.json'));
-  const ours = [...working, ...stores];
+  const { created, adopted } = managedStores(home, manifest);
+  const ours = [...working, ...created]; // the dirs this extension made — and may delete
 
   // 1. Leave Claude Code working. Cheap, and everything after it is optional.
-  const source = lastUsedDir(working, stores);
+  const source = lastUsedDir(working, [...created, ...adopted]);
   if (source) restoreDefaultAccount(source, defaultDir, defaultConfig);
 
   // 2. Get the history somewhere plain Claude Code can see it.
@@ -379,14 +651,31 @@ function main() {
   //    OAuth token is a credential we promised not to leave lying around.
   if (!consolidated) {
     dropTokens(ours);
+    for (const dir of adopted) relinkHistory(dir, store, defaultDir, false); // what did move
     return;
   }
 
   // 4. Everything is safe in ~/.claude. Our dirs hold nothing but duplicated
   //    credentials, config and dangling symlinks (rmSync does not follow those,
-  //    so the store's content is never at risk here). A short-lived earlier
-  //    version also kept token copies in ~/.claude-vault.
-  for (const dir of [...ours, workRoot, store, path.join(home, '.claude-vault')]) {
+  //    so the store's content is never at risk here). Each dir's token goes
+  //    first; on macOS it is a Keychain item, and a dir whose item could not be
+  //    deleted is kept — its path is the only record of the item's name.
+  const kept = new Set(dropTokens(ours));
+  for (const dir of ours) {
+    if (kept.has(dir)) continue;
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* best-effort */
+    }
+  }
+  for (const dir of adopted) relinkHistory(dir, store, defaultDir, true);
+  // The containers go only when nothing we kept is inside them. (A short-lived
+  // Linux-only earlier version also kept token copies in ~/.claude-vault.)
+  const extras = [store];
+  if (![...kept].some((d) => path.dirname(d) === workRoot)) extras.push(workRoot);
+  if (os.platform() === 'linux') extras.push(path.join(home, '.claude-vault'));
+  for (const dir of extras) {
     try {
       fs.rmSync(dir, { recursive: true, force: true });
     } catch {

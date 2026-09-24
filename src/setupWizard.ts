@@ -2,13 +2,22 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { Account, AccountRegistry, readIdentity, hasCredentials } from './accounts';
+import { Account, AccountRegistry, isCreatedStore, markStoreCreated, readIdentity } from './accounts';
+import {
+  asUserAction,
+  credentialState,
+  hasCredentials,
+  inheritedConfigDir,
+  invalidateCredentialCache,
+  isDefaultConfigDir,
+  keychainService,
+} from './credentials';
 import { WindowBinding } from './binding';
 import { getAuthStatus, AuthStatus } from './cli';
 import { snapshotAccount, defaultSourceDir, mirrorToDefault } from './capture';
 import { ensureSharedHistory } from './sharedHistory';
 import { signOut, interruptSessions, dirsHoldingToken } from './reclaim';
-import { refreshStore, allWorkingDirs, materialize } from './workdir';
+import { refreshStore, allWorkingDirs, materialize, isStockPending, clearStockPending } from './workdir';
 import { log } from './log';
 
 /**
@@ -121,6 +130,12 @@ export class SetupWizard {
   async captureCurrentAccount(
     opts: { quiet?: boolean; sourceDir?: string; silent?: boolean } = {}
   ): Promise<Account | undefined> {
+    // An explicit save deserves a real attempt even if the Keychain recently
+    // failed and background work is backing off from it.
+    return opts.silent ? this.capture(opts) : asUserAction(() => this.capture(opts));
+  }
+
+  private async capture(opts: { quiet?: boolean; sourceDir?: string; silent?: boolean }): Promise<Account | undefined> {
     const sourceDir = opts.sourceDir ?? this.binding.getEnvDir() ?? defaultSourceDir();
 
     // The identity file already names the account, and the token file next to it
@@ -172,7 +187,7 @@ export class SetupWizard {
           status.email!,
           (n) => !this.registry.get(n) && !fs.existsSync(path.join(os.homedir(), `.claude-${n}`))
         );
-        return { name, dir: path.join(os.homedir(), `.claude-${name}`), email: status.email };
+        return { name, dir: path.join(os.homedir(), `.claude-${name}`), email: status.email, created: true };
       })();
 
     try {
@@ -181,6 +196,7 @@ export class SetupWizard {
       vscode.window.showErrorMessage(`Could not save account: ${(err as Error).message}`);
       return undefined;
     }
+    if (target.created) markStoreCreated(target.dir);
     ensureSharedHistory([target.dir]);
     target.email = status.email;
     await this.registry.add(target);
@@ -199,16 +215,25 @@ export class SetupWizard {
    * so two runs in flight would save the same account twice.
    */
   private reconciling?: Promise<void>;
+  /** The "account could not be loaded" notice is shown once per window session. */
+  private unloadedNoticeShown = false;
 
   async reconcile(opts: { atActivation?: boolean } = {}): Promise<void> {
     if (this.reconciling) return this.reconciling;
-    this.reconciling = this.reconcileOnce(opts).finally(() => {
-      this.reconciling = undefined;
-    });
+    // Background work: a failure is logged, never thrown at a focus handler or at
+    // activation (where it would abort the rest of it).
+    this.reconciling = this.reconcileOnce(opts)
+      .catch((err) => log(`reconcile failed: ${(err as Error).stack ?? String(err)}`))
+      .finally(() => {
+        this.reconciling = undefined;
+      });
     return this.reconciling;
   }
 
   private async reconcileOnce(opts: { atActivation?: boolean }): Promise<void> {
+    // Every decision below is about what changed OUTSIDE this extension, so start
+    // from fresh answers (macOS memoizes Keychain lookups for a moment).
+    invalidateCredentialCache();
     // Re-read the account list off disk first. `globalState` is per-extension-host,
     // so an account saved or forgotten in ANOTHER window is invisible here until
     // this one restarts — which is why a newly added account never showed up in the
@@ -222,9 +247,26 @@ export class SetupWizard {
     // it is still the default dir — that's where Claude Code is signed in out of
     // the box, and where a brand-new user's account is found.
     const dir = this.binding.getEnvDir() ?? defaultSourceDir();
-    const onDefault = path.normalize(dir) === path.normalize(defaultSourceDir());
+    const onDefault = isDefaultConfigDir(dir);
 
-    if (!hasCredentials(dir)) {
+    const tokenState = credentialState(dir);
+    if (tokenState === 'unknown') {
+      // macOS: the Keychain didn't answer (locked, or a session with no GUI to
+      // unlock it). Everything below would be a guess — and the guesses include
+      // "logged out", which signs an account out everywhere. Wait for a real answer.
+      log(`reconcile: cannot read the token state of ${dir} (Keychain locked?) — skipping`);
+      // A window whose account couldn't even be loaded must not sit there with
+      // no word of why — say so once, with the way out.
+      if (isStockPending(dir) && !this.unloadedNoticeShown) {
+        this.unloadedNoticeShown = true;
+        this.offerAccountPick(
+          `This window's account could not be loaded — the macOS Keychain did not answer (is it locked?). ` +
+            `Unlock it, then pick the account again.`
+        );
+      }
+      return;
+    }
+    if (tokenState === 'absent') {
       const active = this.binding.getActiveName();
 
       // The account is gone from disk entirely — it was FORGOTTEN, most likely from
@@ -233,7 +275,10 @@ export class SetupWizard {
       if (active && !this.registry.get(active)) {
         // Release FIRST: the stale name survives a reload (workspaceState, repo
         // map), and reloading with it in place re-enters this branch forever.
-        const wasRunningIt = Boolean(this.binding.getEnvDir());
+        // Running it = this extension set the env. A value merely inherited from
+        // the environment was never this account's.
+        const envDir = this.binding.getEnvDir();
+        const wasRunningIt = envDir !== undefined && envDir !== inheritedConfigDir();
         await this.binding.release();
         if (wasRunningIt) {
           // The window is sitting on a dir we just found emptied, with a dead
@@ -267,6 +312,10 @@ export class SetupWizard {
     }
     const email = readIdentity(dir)?.email;
     if (!email) return; // token but no identity yet — a sign-in mid-flight
+    // Signed in, however it happened (Claude Code's own /login included): any
+    // failed-stock marker is history — left in place it would one day make a real
+    // /logout here look like a failed stock.
+    clearStockPending(dir);
 
     const active = this.binding.getActiveName();
     const bound = active ? this.registry.get(active) : undefined;
@@ -292,7 +341,10 @@ export class SetupWizard {
     // losing the extension — uninstalled, disabled, failed to activate — never
     // leaves the user with a signed-out Claude Code. The uninstall hook cannot
     // cover that: VSCode defers it to the next server start, and it may never run.
-    mirrorToDefault(dir, readIdentity(dir));
+    // Only from the FOCUSED window — the one the user is actually working in.
+    // Every window mirroring on every reconcile made two windows on two accounts
+    // overwrite the default back and forth forever, each write waking the other.
+    if (vscode.window.state.focused) mirrorToDefault(dir, readIdentity(dir));
     const changed = active !== account.name;
     if (changed) await this.binding.bind(account);
 
@@ -332,41 +384,76 @@ export class SetupWizard {
     const account = active ? this.registry.get(active) : undefined;
     if (!account) return;
 
+    // Everything below is destructive, so it runs only on definite answers. A
+    // store the Keychain won't answer for could be perfectly intact.
+    const storeState = credentialState(account.dir);
+    if (storeState === 'unknown') {
+      log(`working dir ${dir} has no token, but ${account.name}'s store can't be checked (Keychain locked?) — waiting`);
+      return;
+    }
+
     // A REAL logout deletes the token, clears oauthAccount from the dir's
     // config, and leaves that config file in place (Claude Code's own routine).
     // Anything else — identity still present, or no config file at all — is not
     // a logout but a working copy that failed to stock (an interrupted copy, a
-    // full disk). The store is intact, so restock it; concluding "logout" here
-    // would forget — and sign out — a perfectly good account over an IO hiccup.
+    // full disk, a Keychain that wouldn't hand over the token). A dir marked
+    // stock-pending is that case by definition, even though Claude Code may have
+    // since written an account-less config into it. The store is intact, so
+    // restock it; concluding "logout" here would forget — and sign out — a
+    // perfectly good account over an IO hiccup.
     const looksLikeRealLogout =
-      !readIdentity(dir) && fs.existsSync(path.join(dir, '.claude.json'));
-    if (!looksLikeRealLogout && hasCredentials(account.dir)) {
-      log(`working dir ${dir} lost its token but kept its identity — restocking from ${account.name}`);
-      materialize(account, dir, true);
-      await this.requestWindowReload(
-        `Restored ${this.registry.emailOf(account) ?? account.name} for this window.`
-      );
+      !isStockPending(dir) && !readIdentity(dir) && fs.existsSync(path.join(dir, '.claude.json'));
+    if (!looksLikeRealLogout && storeState === 'present') {
+      log(`working dir ${dir} has no token but this is no logout — restocking from ${account.name}`);
+      const email = this.registry.emailOf(account) ?? account.name;
+      if (materialize(account, dir, true) === 'stocked') {
+        await this.requestWindowReload(`Restored ${email} for this window.`);
+      } else {
+        this.offerAccountPick(
+          `Could not load ${email} for this window — its saved sign-in could not be read` +
+            (process.platform === 'darwin' ? ' (is the macOS login Keychain locked?).' : '.')
+        );
+      }
       return;
     }
     const email = this.registry.emailOf(account) ?? account.name;
-    log(`logged out of ${email} in this window — its token is revoked everywhere`);
 
-    await this.registry.forget(account);
-    await this.binding.forget(account);
     // Every dir holding this (now revoked) token, not just the account's store:
     // the working copies AND Claude Code's default dir, which mirrorToDefault
     // keeps stocked. Missing the default one would leave the machine looking
     // signed in to an account whose token the server has already killed — it
     // would fail on the first request, with nothing on screen to explain why.
-    const dirs = [
-      ...dirsHoldingToken(email),
-      ...allWorkingDirs().filter((d) => readIdentity(d)?.email === email),
-    ];
-    for (const d of dirs) signOut(d);
+    const dirs = this.dirsSignedInAs(email);
+    if (dirs.some((d) => credentialState(d) === 'unknown')) {
+      log(`logout of ${email} seen, but some of its copies can't be checked (Keychain locked?) — waiting`);
+      return;
+    }
+    log(`logged out of ${email} in this window — its token is revoked everywhere`);
+
+    await this.registry.forget(account);
+    await this.binding.forget(account);
+    const failed = dirs.filter((d) => signOut(d) === 'failed');
     vscode.window.showInformationMessage(
       `Claude Accounts: you signed out of ${email}, so it was removed from the list — a logout ` +
-        `revokes the account everywhere, not just in this window. Sign in again to bring it back.`
+        `revokes the account everywhere, not just in this window. Sign in again to bring it back.` +
+        (failed.length > 0
+          ? ` ${failed.length} cop${failed.length > 1 ? 'ies' : 'y'} of its (now revoked) token could not be deleted — see the log.`
+          : '')
     );
+  }
+
+  /**
+   * Every dir that may hold `email`'s token: its stores and the default dir (by
+   * identity + token), and every window's working copy (by identity alone — a
+   * working copy of it is never anyone else's).
+   */
+  private dirsSignedInAs(email: string): string[] {
+    return [
+      ...new Set([
+        ...dirsHoldingToken(email),
+        ...allWorkingDirs().filter((d) => readIdentity(d)?.email === email),
+      ]),
+    ];
   }
 
   // ─── Switching this window's account ────────────────────────────────────────
@@ -393,7 +480,13 @@ export class SetupWizard {
       placeHolder: 'Pick the account this window should use',
     });
     if (!picked) return;
-    if (picked.account.name === activeName) {
+    const wd = this.binding.workingDir();
+    const runsIt =
+      hasCredentials(wd) && readIdentity(wd)?.email === this.registry.emailOf(picked.account);
+    // Picking the current account again is how the user retries one that could
+    // not be loaded (e.g. the Keychain was locked) — only a window that really
+    // runs it gets the "already" answer.
+    if (picked.account.name === activeName && runsIt) {
       // Never a silent no-op: to the user a click that does nothing is a bug.
       vscode.window.showInformationMessage(
         `${this.registry.emailOf(picked.account) ?? picked.account.name} is already this window's account.`
@@ -413,8 +506,11 @@ export class SetupWizard {
    * `*`) and the new account is already in place.
    */
   async switchTo(account: Account): Promise<void> {
-    await this.binding.bind(account);
-    await this.requestWindowReload(undefined, { userInitiated: true });
+    // The user asked: try the Keychain for real, backoff or not.
+    await asUserAction(async () => {
+      await this.binding.bind(account); // throws — before anything is recorded — if it can't be loaded
+      await this.requestWindowReload(undefined, { userInitiated: true });
+    });
   }
 
   // ─── Forgetting an account ──────────────────────────────────────────────────
@@ -450,32 +546,76 @@ export class SetupWizard {
       'Forget'
     );
     if (choice !== 'Forget') return;
+    // The user asked: every Keychain call below is tried for real, backoff or not.
+    await asUserAction(() => this.forget(picked.account, email));
+  }
 
+  private async forget(picked: Account, email: string): Promise<void> {
+    // Sign the account out of EVERY dir holding it: its store, the default dir
+    // (where a sign-in may have left the original), and every window's working
+    // copy. Missing any one of them leaves the account still signed in somewhere,
+    // and a reloaded window would quietly restore itself from it.
+    //
+    // All-or-nothing where it can be: if the Keychain won't say whether a copy
+    // holds the token, forgetting now would report "signed out everywhere" while
+    // a live token may stay behind. Nothing is changed until it answers.
+    invalidateCredentialCache();
+    const dirs = this.dirsSignedInAs(email);
+    const unchecked = dirs.filter((d) => credentialState(d) === 'unknown');
+    if (unchecked.length > 0) {
+      log(`forget ${email}: cannot check ${unchecked.join(', ')} — nothing changed`);
+      vscode.window.showErrorMessage(
+        `Claude Accounts: could not forget ${email} — the macOS Keychain did not answer for ` +
+          `${unchecked.length} of its copies (is it locked?). Nothing was changed; unlock it and try again.`
+      );
+      return;
+    }
+
+    // Decided BEFORE anything is signed out: a signed-out store no longer names
+    // its account, so it could no longer be matched by email.
     const copies = this.registry
       .list()
-      .filter((a) => this.registry.emailOf(a) === this.registry.emailOf(picked.account));
-
+      .filter((a) => this.registry.emailOf(a) === this.registry.emailOf(picked));
     // Was THIS window running it? Decide before the binding is released.
     const usedHere = copies.some((c) => c.name === this.binding.getActiveName());
+
+    // A locked Keychain still ANSWERS lookups — it only refuses to delete. So the
+    // first delete is a probe, on a copy no session can be running on — a store
+    // this extension created (windows only ever run working copies of those; an
+    // adopted profile may be in use in a terminal): if it is refused, stop right
+    // there, before any session is killed or anything is forgotten, instead of
+    // doing all that and then failing every delete.
+    const storeDirs = new Set(copies.filter(isCreatedStore).map((c) => path.normalize(c.dir)));
+    const probe = dirs.find((d) => storeDirs.has(path.normalize(d)) && hasCredentials(d));
+    let signedOut = 0;
+    if (probe) {
+      const result = signOut(probe);
+      if (result === 'failed') {
+        log(`forget ${email}: the Keychain refused to delete ${probe} — nothing else changed`);
+        vscode.window.showErrorMessage(
+          `Claude Accounts: could not forget ${email} — the macOS Keychain refused to delete its token ` +
+            `(is it locked?). Nothing was changed; unlock it and try again.`
+        );
+        return;
+      }
+      if (result === 'removed') signedOut++;
+    }
+    const rest = dirs.filter((d) => d !== probe);
 
     for (const copy of copies) {
       await this.registry.forget(copy);
       await this.binding.forget(copy);
     }
 
-    // Sign the account out of EVERY dir holding it: its store, the default dir
-    // (where a sign-in may have left the original), and every window's working
-    // copy. Missing any one of them leaves the account still signed in somewhere,
-    // and a reloaded window would quietly restore itself from it.
-    const dirs = [
-      ...dirsHoldingToken(email),
-      ...allWorkingDirs().filter((d) => readIdentity(d)?.email === email),
-    ];
     // Kill live sessions FIRST, and with SIGKILL: on a graceful shutdown Claude
     // Code flushes its in-memory token back to disk, undoing the delete.
-    const interrupted = interruptSessions(dirs);
-    let signedOut = 0;
-    for (const dir of dirs) if (signOut(dir)) signedOut++;
+    const { interrupted, unchecked: unknownSessions } = interruptSessions(rest);
+    const failed: string[] = [];
+    for (const dir of rest) {
+      const result = signOut(dir);
+      if (result === 'removed') signedOut++;
+      else if (result === 'failed') failed.push(dir);
+    }
 
     const parts = [`Forgot ${email}.`];
     parts.push(
@@ -486,6 +626,24 @@ export class SetupWizard {
     if (interrupted > 0) {
       parts.push(`Interrupted ${interrupted} active session${interrupted > 1 ? 's' : ''}.`);
     }
+    if (unknownSessions > 0) {
+      parts.push(
+        `${unknownSessions} running claude process${unknownSessions > 1 ? 'es' : ''} could not be matched ` +
+          `to an account and ${unknownSessions > 1 ? 'were' : 'was'} left alone.`
+      );
+    }
+    if (failed.length > 0) {
+      // Not a success, and must not read like one: a live token is still there.
+      for (const d of failed) {
+        log(`forget ${email}: token NOT deleted in ${d}` +
+          (process.platform === 'darwin' ? ` — Keychain item "${keychainService(d)}"` : ''));
+      }
+      parts.push(
+        `WARNING: its token could not be deleted from ${failed.length} ` +
+          `${failed.length > 1 ? 'directories' : 'directory'} and is still valid there — the log names ` +
+          `${process.platform === 'darwin' ? 'the Keychain items; delete them in Keychain Access' : 'the files to delete'}.`
+      );
+    }
 
     // If this window was running it, reload: Claude Code only reads its account at
     // activation, so otherwise the window sits on a dir we just emptied, with a
@@ -494,7 +652,8 @@ export class SetupWizard {
       await this.requestWindowReload(parts.join(' '), { userInitiated: true });
       return;
     }
-    vscode.window.showInformationMessage(parts.join(' '));
+    if (failed.length > 0) vscode.window.showWarningMessage(parts.join(' '));
+    else vscode.window.showInformationMessage(parts.join(' '));
   }
 }
 

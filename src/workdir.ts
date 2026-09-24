@@ -3,7 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
-import { Account, readIdentity, hasCredentials } from './accounts';
+import { Account, readIdentity } from './accounts';
+import { credentialState, readCredentials, writeCredentials } from './credentials';
 import { log } from './log';
 
 /**
@@ -28,6 +29,10 @@ import { log } from './log';
  * The duplicated credentials this implies are safe, and that is not an
  * assumption: verified against the live API that copies of a token authenticate
  * independently, and that refreshing one does not invalidate the other.
+ *
+ * On macOS the "dir of its own" extends to the token: Claude Code names its
+ * Keychain item after the dir, so a working dir gets a Keychain item no other
+ * window reads or writes (see credentials.ts).
  */
 
 /** workspaceState key holding this window's working-dir id (folderless windows). */
@@ -76,8 +81,38 @@ export function windowWorkingDir(context: vscode.ExtensionContext): string {
 }
 
 /**
+ * Marks a working dir this extension TRIED to stock and couldn't (the store's
+ * token was unreadable — on macOS a locked or unresponsive Keychain). Claude Code
+ * may meanwhile start in the empty dir and write a config with no account in it:
+ * precisely the shape a `/logout` leaves. The marker is what tells the two apart,
+ * so a failed stock is retried instead of being "followed" as a logout — which
+ * would forget the account and sign it out everywhere.
+ */
+const STOCK_PENDING = '.stock-pending';
+
+export function isStockPending(workingDir: string): boolean {
+  return fs.existsSync(path.join(workingDir, STOCK_PENDING));
+}
+
+function markStockPending(workingDir: string): void {
+  try {
+    fs.mkdirSync(workingDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(workingDir, STOCK_PENDING), '', { mode: 0o600 });
+  } catch {
+    /* best-effort: without it a later activation just won't retry */
+  }
+}
+
+/** Drops the marker — the dir now holds an account, however it got there. */
+export function clearStockPending(workingDir: string): void {
+  fs.rmSync(path.join(workingDir, STOCK_PENDING), { force: true });
+}
+
+/**
  * Makes `workingDir` run `account`, copying the credentials and config out of the
- * account's store.
+ * account's store. Returns what happened: `stocked`, `unchanged` (already runs it,
+ * or deliberately left alone), or `failed` (the store's token couldn't be read or
+ * the copy couldn't be written — the dir is marked for a retry).
  *
  * Two things it must NOT do:
  *
@@ -89,23 +124,64 @@ export function windowWorkingDir(context: vscode.ExtensionContext): string {
  *     resurrect the window as signed-in — on a token the logout just had REVOKED
  *     server-side. The window would look fine and fail on its first request, and
  *     the logout would never be noticed at all. `force` is for an explicit switch,
- *     where stocking an empty dir is exactly what the user asked for.
+ *     where stocking an empty dir is exactly what the user asked for. A dir marked
+ *     stock-pending is no logout, so it is retried.
  */
-export function materialize(account: Account, workingDir: string, force = false): boolean {
+export function materialize(
+  account: Account,
+  workingDir: string,
+  force = false
+): 'stocked' | 'unchanged' | 'failed' {
   const exists = fs.existsSync(workingDir);
-  if (exists && !hasCredentials(workingDir) && !force) return false; // emptied by a logout
-  if (hasCredentials(workingDir) && readIdentity(workingDir)?.email === account.email) return false;
+  const state = credentialState(workingDir);
+  if (exists && state !== 'present' && !force && !isStockPending(workingDir)) return 'unchanged'; // emptied by a logout
+  if (state === 'present' && readIdentity(workingDir)?.email === account.email) {
+    clearStockPending(workingDir);
+    return 'unchanged';
+  }
+  // Without the store's token there is nothing to run: stocking only the identity
+  // would leave a dir that names an account it can't use.
+  const token = readCredentials(account.dir);
+  if (!token) {
+    log(
+      `workdir: ${account.email ?? account.name}'s token ${
+        token === undefined ? 'could not be read (Keychain locked?)' : 'is missing from its store'
+      } — ${workingDir} not stocked`
+    );
+    // Mark only a dir that doesn't run an account: a failed SWITCH leaves the
+    // window on its previous account, and a marker there would later make a real
+    // /logout look like a failed stock — and restock the revoked token.
+    if (state !== 'present') markStockPending(workingDir);
+    return 'failed';
+  }
   try {
     fs.mkdirSync(workingDir, { recursive: true, mode: 0o700 });
-    copyFile(path.join(account.dir, '.credentials.json'), path.join(workingDir, '.credentials.json'));
     // The config carries the account's identity AND its per-project state (folder
     // trust, allowed tools, MCP servers), so an account keeps those wherever it runs.
-    copyFile(path.join(account.dir, '.claude.json'), path.join(workingDir, '.claude.json'));
+    // It is staged BEFORE the token is written and swapped in after: whichever
+    // step fails, the dir never ends up with one account's token under another's
+    // identity (the next reconcile would copy that token into the wrong store).
+    const cfgSrc = path.join(account.dir, '.claude.json');
+    const cfgDst = path.join(workingDir, '.claude.json');
+    const staged = fs.existsSync(cfgSrc) ? `${cfgDst}.tmp` : undefined;
+    if (staged) {
+      fs.copyFileSync(cfgSrc, staged);
+      fs.chmodSync(staged, 0o600);
+    }
+    try {
+      writeCredentials(workingDir, token);
+    } catch (err) {
+      if (staged) fs.rmSync(staged, { force: true });
+      throw err;
+    }
+    if (staged) fs.renameSync(staged, cfgDst);
+    clearStockPending(workingDir);
     log(`workdir: ${workingDir} now runs ${account.email ?? account.name}`);
-    return true;
+    return 'stocked';
   } catch (err) {
     log(`workdir: could not stock ${workingDir} with ${account.name}: ${(err as Error).message}`);
-    return false;
+    if (state !== 'present') markStockPending(workingDir);
+    return 'failed';
   }
 }
 
@@ -116,16 +192,13 @@ export function materialize(account: Account, workingDir: string, force = false)
  * churned by every window that runs it.
  */
 export function refreshStore(account: Account, workingDir: string): void {
-  const src = path.join(workingDir, '.credentials.json');
-  const dst = path.join(account.dir, '.credentials.json');
   try {
-    if (!fs.existsSync(src)) return;
-    const incoming = fs.readFileSync(src);
-    if (fs.existsSync(dst) && fs.readFileSync(dst).equals(incoming)) return;
+    const incoming = readCredentials(workingDir);
+    if (!incoming) return;
+    const stored = readCredentials(account.dir);
+    if (stored === undefined || stored?.equals(incoming)) return; // unreadable, or already current
     fs.mkdirSync(account.dir, { recursive: true, mode: 0o700 });
-    const tmp = `${dst}.tmp`;
-    fs.writeFileSync(tmp, incoming, { mode: 0o600 });
-    fs.renameSync(tmp, dst); // atomic: a half-written store is worse than a stale one
+    writeCredentials(account.dir, incoming); // atomic: a half-written store is worse than a stale one
     log(`workdir: refreshed store of ${account.email ?? account.name}`);
   } catch (err) {
     log(`workdir: could not refresh store of ${account.name}: ${(err as Error).message}`);
@@ -142,12 +215,4 @@ export function allWorkingDirs(): string[] {
   } catch {
     return []; // nothing created yet
   }
-}
-
-function copyFile(src: string, dst: string): void {
-  if (!fs.existsSync(src)) return;
-  const tmp = `${dst}.tmp`;
-  fs.copyFileSync(src, tmp);
-  fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, dst);
 }

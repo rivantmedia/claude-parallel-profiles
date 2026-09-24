@@ -10,30 +10,31 @@ import { ensureSharedHistory } from './sharedHistory';
 import { defaultSourceDir } from './capture';
 import { AccountWatcher } from './accountWatcher';
 import { allWorkingDirs, workingRoot } from './workdir';
+import { explicitDefaultDir, inheritedForeignWorkingDir } from './credentials';
 import { log, showLog } from './log';
 
 /**
- * Everything this extension does rests on Linux semantics that we verified:
- * Claude Code keeping credentials as FILES (macOS uses the Keychain instead),
- * /proc for finding live sessions, symlinks for shared history, a POSIX shell
- * for the CLI. On any other OS those assumptions silently break — up to
- * destructive misbehaviour (e.g. the registry pruning every account because it
- * sees no credential files). So elsewhere the extension must not guess: it
+ * Everything this extension does rests on platform semantics that we verified
+ * against Claude Code itself: where it keeps each data dir's token (a FILE on
+ * Linux, a Keychain item named after the dir on macOS — see credentials.ts),
+ * how to find live sessions (/proc on Linux, `ps` on macOS), symlinks for shared
+ * history, a POSIX shell for the CLI. On any other OS those assumptions silently
+ * break — up to destructive misbehaviour (e.g. the registry pruning every account
+ * because it sees no credentials). So elsewhere the extension must not guess: it
  * activates into an INERT mode that touches nothing and says why.
  *
- * The Marketplace additionally publishes Linux-only packages, so this mode is
- * normally reached only by a side-loaded VSIX. The check runs where the
- * extension actually executes — in a WSL/SSH/container window that's the
- * REMOTE side (extensionKind "workspace"), so a Windows desktop driving a
- * Linux remote is fully supported and never lands here.
+ * The check runs where the extension actually executes — in a WSL/SSH/container
+ * window that's the REMOTE side (extensionKind "workspace"), so a Windows
+ * desktop driving a Linux remote is fully supported and never lands here.
  */
+const SUPPORTED_PLATFORMS: NodeJS.Platform[] = ['linux', 'darwin'];
+
 function activateUnsupported(context: vscode.ExtensionContext): void {
-  const label =
-    process.platform === 'darwin' ? 'macOS' : process.platform === 'win32' ? 'native Windows' : process.platform;
+  const label = process.platform === 'win32' ? 'native Windows' : process.platform;
   const msg =
-    `Claude Parallel Accounts supports Linux only for now — desktop Linux, WSL, Remote-SSH to a Linux ` +
-    `host, or a dev container. On ${label} it stays inactive: no files are read or written, no accounts ` +
-    `are touched.` +
+    `Claude Parallel Profiles supports Linux and macOS — desktop Linux, WSL, Remote-SSH to a Linux or ` +
+    `macOS host, or a dev container. On ${label} it stays inactive: no files are read or written, no ` +
+    `accounts are touched.` +
     (process.platform === 'win32' ? ' Tip: open your folder in a WSL window and install it there.' : '');
   log(`platform ${process.platform} is unsupported — inert mode, nothing will be touched`);
 
@@ -44,7 +45,7 @@ function activateUnsupported(context: vscode.ExtensionContext): void {
   );
   item.name = 'Claude Account';
   item.text = '$(account) Claude: unsupported OS';
-  const tooltip = new vscode.MarkdownString(`$(account) **Claude Parallel Accounts**\n\n${msg}`);
+  const tooltip = new vscode.MarkdownString(`$(account) **Claude Parallel Profiles**\n\n${msg}`);
   tooltip.supportThemeIcons = true;
   item.tooltip = tooltip;
   item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
@@ -65,15 +66,52 @@ function activateUnsupported(context: vscode.ExtensionContext): void {
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  if (process.platform !== 'linux') {
+  if (!SUPPORTED_PLATFORMS.includes(process.platform)) {
     activateUnsupported(context);
     return;
+  }
+
+  // CLAUDE_SECURESTORAGE_CONFIG_DIR, when set, decides where Claude Code keeps the
+  // token (the Keychain item's name on macOS, the .credentials.json dir on Linux)
+  // INSTEAD of CLAUDE_CONFIG_DIR — one inherited value would pin every window's
+  // Claude Code to a single token, whichever account the window picked. Isolation
+  // runs through CLAUDE_CONFIG_DIR alone, so this host's copy is dropped before
+  // anything is spawned from it. (Claude Code's extension only sets it itself on
+  // Windows.)
+  if (process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR !== undefined) {
+    log(`ignoring inherited CLAUDE_SECURESTORAGE_CONFIG_DIR=${process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR}`);
+    delete process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
+  }
+
+  // A custom OAuth endpoint changes the name of Claude Code's Keychain item
+  // ("Claude Code-custom-oauth-credentials…"). Claude Code gets it merged in from
+  // `claudeCode.environmentVariables`; this host must see the same value, or every
+  // token would be filed under a name Claude Code never reads.
+  if (!process.env.CLAUDE_CODE_CUSTOM_OAUTH_URL) {
+    const vars = vscode.workspace
+      .getConfiguration('claudeCode')
+      .get<Array<{ name: string; value: string }>>('environmentVariables', []);
+    const custom = Array.isArray(vars) ? vars.find((e) => e?.name === 'CLAUDE_CODE_CUSTOM_OAUTH_URL') : undefined;
+    if (custom?.value) {
+      process.env.CLAUDE_CODE_CUSTOM_OAUTH_URL = custom.value;
+      log(`using CLAUDE_CODE_CUSTOM_OAUTH_URL from claudeCode.environmentVariables`);
+    }
+  }
+  // A window opened with `code` from ANOTHER window's terminal inherits that
+  // window's CLAUDE_CONFIG_DIR — its private working dir. Running on it would
+  // make two windows share one dir, the exact failure the design rules out.
+  if (inheritedForeignWorkingDir()) {
+    log(`ignoring inherited CLAUDE_CONFIG_DIR=${inheritedForeignWorkingDir()} — another window's working dir`);
+    delete process.env.CLAUDE_CONFIG_DIR;
+  }
+  if (explicitDefaultDir()) {
+    log(`inherited CLAUDE_CONFIG_DIR=${explicitDefaultDir()} — the default dir runs with it set`);
   }
 
   const registry = new AccountRegistry(context);
   const binding = new WindowBinding(context);
   const wizard = new SetupWizard(registry, binding, context);
-  const statusBar = new StatusBarManager(registry, binding);
+  const statusBar = new StatusBarManager(registry, binding, context.extension.id);
 
   // A forgotten account no longer resolves, so a window that remembered one
   // falls back to the default dir and — via auto-save — onto whichever saved
@@ -96,10 +134,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // A short-lived earlier design kept a "shadow vault" of credential copies. The
   // per-window working dirs made it unnecessary — an account's store IS the spare
-  // copy now — but it held real tokens, so leave none behind.
+  // copy now — but it held real tokens, so leave none behind. That design only
+  // ever ran on Linux: anywhere else a dir by that name belongs to someone else.
   try {
     const vault = path.join(os.homedir(), '.claude-vault');
-    if (fs.existsSync(vault)) {
+    if (process.platform === 'linux' && fs.existsSync(vault)) {
       fs.rmSync(vault, { recursive: true, force: true });
       log('removed the obsolete credential vault');
     }
@@ -209,13 +248,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     void vscode.window
       .showErrorMessage(
         `Claude Accounts: another extension already owns ${conflicts.length} of this extension's ` +
-          `commands — most likely a duplicate copy under a different publisher ` +
-          `(e.g. "tundak.claude-parallel-accounts"). Uninstall the duplicate and reload the window.`,
+          `commands — most likely another copy of it under a different publisher (e.g. the original ` +
+          `"DercasDrol.claude-parallel-accounts"). Keep one, uninstall the other and reload the window.`,
         'Show extensions'
       )
       .then((pick) => {
         if (pick === 'Show extensions') {
-          void vscode.commands.executeCommand('workbench.extensions.search', 'claude parallel accounts');
+          void vscode.commands.executeCommand('workbench.extensions.search', 'claude parallel');
         }
       });
   }

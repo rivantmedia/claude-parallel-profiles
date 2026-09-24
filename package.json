@@ -1,21 +1,25 @@
 {
-  "name": "claude-parallel-accounts",
-  "displayName": "Claude Parallel Accounts",
-  "description": "Companion for the Claude Code VS Code extension: run a different Claude account in each VSCode window simultaneously — capture, switch, and isolate accounts per window.",
-  "version": "1.3.2",
-  "publisher": "DercasDrol",
+  "name": "claude-parallel-profiles",
+  "displayName": "Claude Parallel Profiles",
+  "description": "Companion for the Claude Code VS Code extension: run a different Claude account in each VSCode window simultaneously — capture, switch, and isolate accounts per window. Linux, WSL and macOS.",
+  "version": "1.4.0",
+  "publisher": "rivantmedia",
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DercasDrol/claude-parallel-profiles"
+    "url": "https://github.com/rivantmedia/claude-parallel-profiles"
   },
+  "homepage": "https://github.com/rivantmedia/claude-parallel-profiles#readme",
   "bugs": {
-    "url": "https://github.com/DercasDrol/claude-parallel-profiles/issues"
+    "url": "https://github.com/rivantmedia/claude-parallel-profiles/issues"
   },
   "license": "MIT",
   "author": {
-    "name": "dercasdrol"
+    "name": "Rivant Media"
   },
+  "contributors": [
+    "dercasdrol (original author)"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -29,7 +33,8 @@
     "profiles",
     "profile manager",
     "accounts",
-    "multi-account"
+    "multi-account",
+    "macos"
   ],
   "activationEvents": [
     "*"
@@ -84,8 +89,8 @@
     "compile": "npm run check-types && node esbuild.js",
     "vscode:prepublish": "npm run check-types && node esbuild.js --production",
     "vscode:uninstall": "node ./uninstall.js",
-    "package": "vsce package",
-    "release": "vsce publish"
+    "package": "vsce package --allow-star-activation",
+    "release": "vsce publish --allow-star-activation"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

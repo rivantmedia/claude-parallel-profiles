@@ -1,12 +1,11 @@
 import * as vscode from 'vscode';
-import { AccountRegistry, readIdentity, hasCredentials } from './accounts';
+import { AccountRegistry, readIdentity } from './accounts';
+import { lacksCredentials } from './credentials';
 import { log } from './log';
 import { WindowBinding } from './binding';
 import { getAuthStatus, AuthStatus } from './cli';
 import { defaultSourceDir } from './capture';
 
-/** Marketplace id — the hover links to the extension's own page with it. */
-const EXTENSION_ID = 'DercasDrol.claude-parallel-accounts';
 
 /**
  * Status bar item showing the account bound to THIS window. The displayed
@@ -29,7 +28,9 @@ export class StatusBarManager implements vscode.Disposable {
 
   constructor(
     private readonly registry: AccountRegistry,
-    private readonly binding: WindowBinding
+    private readonly binding: WindowBinding,
+    /** This extension's own id — the hover links to its page with it. */
+    private readonly extensionId: string
   ) {
     this.item = vscode.window.createStatusBarItem(
       'claudeProfiles.status',
@@ -106,13 +107,14 @@ export class StatusBarManager implements vscode.Disposable {
    * What this window's account REALLY is.
    *
    * The identity file outlives the token: after a `/logout` — or a forget in
-   * another window — `.credentials.json` is gone but `.claude.json` still names
-   * the account. So the identity file alone must NEVER be enough to claim
-   * "signed in", or the bar happily shows a signed-out account as if nothing
-   * happened. Ground truth is the token file plus the CLI's verdict; the
-   * identity is only a fast fallback for the email while the CLI is still
-   * answering. (A confirmed `loggedIn` without a token file is still trusted —
-   * that's an API-key setup, which keeps no `.credentials.json`.)
+   * another window — the token is gone but `.claude.json` still names the
+   * account. So the identity file alone must NEVER be enough to claim "signed
+   * in", or the bar happily shows a signed-out account as if nothing happened.
+   * Ground truth is the token (file, or Keychain item on macOS) plus the CLI's
+   * verdict; the identity is only a fast fallback for the email while the CLI is
+   * still answering. (A confirmed `loggedIn` without a token is still trusted —
+   * that's an API-key setup, which keeps no OAuth token.) A Keychain that can't
+   * be asked is not "no token" either.
    *
    * The three cached states are NOT interchangeable and collapsing them is a bug:
    *   undefined → not asked yet
@@ -133,7 +135,7 @@ export class StatusBarManager implements vscode.Disposable {
     const unreachable = status === null;
     const cliSaysIn = status?.loggedIn === true;
     const cliSaysOut = status !== undefined && status !== null && status.loggedIn !== true;
-    const signedOut = cliSaysOut || (!hasCredentials(dir) && !cliSaysIn);
+    const signedOut = cliSaysOut || (lacksCredentials(dir) && !cliSaysIn);
     return {
       email: signedOut ? undefined : status?.email ?? readIdentity(dir)?.email,
       signedOut,
@@ -154,13 +156,13 @@ export class StatusBarManager implements vscode.Disposable {
     // No "Settings" link: the extension deliberately has none, and a gear that
     // opens an empty settings page is worse than no gear at all.
     const links = [
-      `[$(extensions) Extension](command:extension.open?${arg([EXTENSION_ID])} "Open the extension page")`,
+      `[$(extensions) Extension](command:extension.open?${arg([this.extensionId])} "Open the extension page")`,
       `[$(output) Log](command:claudeProfiles.showLog "Show what this extension has been doing")`,
     ].join(' &nbsp;·&nbsp; ');
 
     const body = sections.filter(Boolean).join('\n\n');
     const md = new vscode.MarkdownString(
-      `$(account) **Claude Parallel Accounts**\n\n${body}\n\n---\n\n${links}`
+      `$(account) **Claude Parallel Profiles**\n\n${body}\n\n---\n\n${links}`
     );
     md.isTrusted = true;
     md.supportThemeIcons = true;

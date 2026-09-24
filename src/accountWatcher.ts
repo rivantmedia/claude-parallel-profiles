@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { WindowBinding } from './binding';
 import { defaultSourceDir } from './capture';
+import { credentialStamp, isDefaultConfigDir, keychainFiles, tokenFile } from './credentials';
 
 /**
  * Keeps the status bar honest by repainting it the moment this window's account
@@ -38,13 +39,32 @@ export class AccountWatcher implements vscode.Disposable {
     // ANOTHER window, deletes `.credentials.json` while the identity file stays
     // behind. Without this the bar would keep showing the account as live.
     const dir = this.binding.getEnvDir() ?? defaultSourceDir();
-    const files = new Set<string>([
-      path.join(dir, '.claude.json'),
-      path.join(os.homedir(), '.claude.json'),
-      path.join(dir, '.credentials.json'),
-    ]);
+    const onDefault = isDefaultConfigDir(dir);
+    const files = new Set<string>([path.join(dir, '.claude.json'), tokenFile(dir)]);
+    // The home-root config is the DEFAULT account's identity — this window's only
+    // while it runs on the default dir. A bound window must not wake up on it:
+    // other windows mirror their account into it, and reacting to that is how two
+    // windows ended up rewriting the default back and forth forever.
+    if (onDefault) files.add(path.join(os.homedir(), '.claude.json'));
     for (const f of files) {
       fs.watchFile(f, { interval: 2000 }, () => this.schedule());
+      this.watched.push(f);
+    }
+
+    // On macOS the token isn't a file: a `/login` or `/logout` rewrites this dir's
+    // Keychain item instead. Nothing announces that, but any Keychain write
+    // touches the keychain database — so poll that (a stat, like the files
+    // above) and, when it moves, check whether it was THIS dir's item. Other apps
+    // write to the login keychain too; the fingerprint keeps their writes from
+    // waking reconcile up.
+    let stamp = keychainFiles().length > 0 ? credentialStamp(dir) : '';
+    for (const f of keychainFiles()) {
+      fs.watchFile(f, { interval: 2000 }, () => {
+        const next = credentialStamp(dir);
+        if (next === stamp) return;
+        stamp = next;
+        this.schedule();
+      });
       this.watched.push(f);
     }
   }

@@ -2,12 +2,14 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { explicitDefaultDir, hasCredentials, isDefaultConfigDir, lacksCredentials } from './credentials';
 
 /**
  * An account = a Claude Code data directory (CLAUDE_CONFIG_DIR) that has been
- * logged in. Everything Claude Code needs lives inside it:
+ * logged in. Everything Claude Code needs is keyed to it:
  *   <dir>/.claude.json        → config + oauthAccount identity
- *   <dir>/.credentials.json   → OAuth tokens (file-based on Linux/WSL)
+ *   the dir's OAuth token     → <dir>/.credentials.json on Linux/WSL, a Keychain
+ *                               item named after the dir on macOS (credentials.ts)
  *
  * We NEVER touch ~/.claude.json (the global default) — isolation is achieved
  * purely by pointing each window's process.env.CLAUDE_CONFIG_DIR at a dir.
@@ -19,6 +21,13 @@ export interface Account {
   dir: string;
   /** Last known account email (cached for display; source of truth is the CLI). */
   email?: string;
+  /**
+   * Whether this extension CREATED the dir (true) or adopted one that was already
+   * there (false) — e.g. a profile the user ran by hand as
+   * `CLAUDE_CONFIG_DIR=~/.claude-work claude`. Only created dirs are ever deleted
+   * on uninstall. Undefined for entries saved before this was recorded.
+   */
+  created?: boolean;
 }
 
 /** Identity read live from <dir>/.claude.json. */
@@ -66,19 +75,37 @@ function readIdentityFile(file: string): AccountIdentity | null {
  * .claude.json has no oauthAccount — that identity lives in ~/.claude.json at
  * the home root — so we fall back to it. Without this fallback an unbound
  * window has no identity to paint and the status bar hangs on its spinner.
+ * (Unless the environment sets CLAUDE_CONFIG_DIR to ~/.claude: then Claude Code
+ * never reads the home-root file, and any identity there is stale.)
  */
 export function readIdentity(dir: string): AccountIdentity | null {
   const own = readIdentityFile(path.join(dir, '.claude.json'));
   if (own) return own;
-  if (path.normalize(dir) === path.normalize(path.join(os.homedir(), '.claude'))) {
+  if (isDefaultConfigDir(dir) && !explicitDefaultDir()) {
     return readIdentityFile(path.join(os.homedir(), '.claude.json'));
   }
   return null;
 }
 
-/** True if the dir looks like a logged-in Claude Code config dir. */
-export function hasCredentials(dir: string): boolean {
-  return fs.existsSync(path.join(dir, '.credentials.json'));
+/**
+ * Dropped into every store this extension creates, so ANY window — including one
+ * whose registry only discovered the store later — and the uninstall hook can
+ * tell it from a profile the user made, which must never be deleted.
+ */
+export const STORE_MARKER = '.parallel-accounts-store';
+
+export function markStoreCreated(dir: string): void {
+  try {
+    fs.writeFileSync(path.join(dir, STORE_MARKER), '', { mode: 0o600 });
+  } catch {
+    /* best-effort: the registry's created flag still records it */
+  }
+}
+
+/** Whether this extension created the store (as opposed to adopting a user's dir). */
+export function isCreatedStore(a: Account): boolean {
+  if (fs.existsSync(path.join(a.dir, STORE_MARKER))) return true;
+  return a.created ?? looksExtensionMade(a.dir);
 }
 
 /** Expands a leading ~ to the home directory. */
@@ -101,6 +128,40 @@ function manifestPath(): string {
 }
 
 /**
+ * For a registry entry saved before provenance was recorded: does the dir hold
+ * only what this extension puts into a store? A store is never run by Claude Code
+ * directly (windows run working copies of it), so it contains a token, a config,
+ * their backups and the shared-history links — and nothing a user would add
+ * (settings.json, CLAUDE.md, agents/, plugins/, …). Anything else means the dir
+ * has a life of its own, and it is treated as the user's.
+ */
+function looksExtensionMade(dir: string): boolean {
+  const ours = new Set([
+    STORE_MARKER,
+    '.credentials.json',
+    '.claude.json',
+    '.claude.json.lock',
+    '.stock-pending',
+    'backups',
+    'projects',
+    'sessions',
+    'session-env',
+    'shell-snapshots',
+    'file-history',
+    'plans',
+    'todos',
+    'history.jsonl',
+  ]);
+  try {
+    return fs
+      .readdirSync(dir)
+      .every((name) => ours.has(name) || name.startsWith('.claude.json.') || name.endsWith('.tmp'));
+  } catch {
+    return false; // can't look inside — don't claim it
+  }
+}
+
+/**
  * The account registry is stored in globalState so every window (and every
  * VSCode profile) on this machine sees the same set of accounts.
  */
@@ -118,12 +179,38 @@ export class AccountRegistry {
    */
   writeManifest(): void {
     try {
-      const stores = [...this.list(), ...this.listForgotten()].map((a) => path.normalize(a.dir));
+      const all = [...this.list(), ...this.listForgotten()];
+      const stores = all.map((a) => path.normalize(a.dir));
+      // `created` is what uninstall may delete. Everything else in `stores` it
+      // leaves standing (only unhooking the shared history from it).
+      // A store saved before 1.4.0 has no marker. If this registry — which
+      // remembers saving it — finds it extension-shaped, mark it now, so a window
+      // that only discovered it (and so calls it adopted) agrees.
+      for (const a of all) {
+        if (a.created === undefined && !fs.existsSync(path.join(a.dir, STORE_MARKER)) && looksExtensionMade(a.dir)) {
+          markStoreCreated(a.dir);
+        }
+      }
+      const created = all.filter(isCreatedStore).map((a) => path.normalize(a.dir));
       const file = manifestPath();
       fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-      fs.writeFileSync(file, JSON.stringify({ stores: [...new Set(stores)] }, null, 2), {
-        mode: 0o600,
-      });
+      fs.writeFileSync(
+        file,
+        JSON.stringify(
+          {
+            stores: [...new Set(stores)],
+            created: [...new Set(created)],
+            // What the uninstall hook needs to name Keychain items exactly as
+            // Claude Code does, but can't see from its own environment (these may
+            // come from claudeCode.environmentVariables or VSCode's login shell).
+            customOAuth: Boolean(process.env.CLAUDE_CODE_CUSTOM_OAUTH_URL),
+            defaultConfigDir: explicitDefaultDir() ?? null,
+          },
+          null,
+          2
+        ),
+        { mode: 0o600 }
+      );
     } catch {
       /* best-effort */
     }
@@ -198,7 +285,9 @@ export class AccountRegistry {
    * new accounts appear, and signed-out ones disappear.
    */
   async pruneSignedOut(): Promise<Account[]> {
-    const gone = this.list().filter((a) => !hasCredentials(a.dir));
+    // Only a DEFINITIVE "no token" counts. On macOS a locked Keychain answers
+    // "can't tell", and reading that as signed out would drop every account.
+    const gone = this.list().filter((a) => lacksCredentials(a.dir));
     for (const a of gone) await this.remove(a.name);
     return gone;
   }
@@ -258,12 +347,13 @@ export class AccountRegistry {
       // history store. Adopting either would invent a phantom account.
       if (m[1] === 'windows' || m[1] === 'shared') continue;
       const dir = path.join(home, e.name);
-      if (!hasCredentials(dir)) continue;
       // Explicitly forgotten dirs stay on disk — do not resurrect them.
       if (forgotten.has(path.normalize(dir))) continue;
       const name = m[1];
       if (this.getByDir(dir)) continue;
-      found.push({ name, dir });
+      // Last: on macOS this asks the Keychain, the only check that isn't free.
+      if (!hasCredentials(dir)) continue;
+      found.push({ name, dir, created: false }); // the user's own dir — adopted, never deleted
     }
     for (const acc of found) {
       // Avoid name collisions with existing registry entries.

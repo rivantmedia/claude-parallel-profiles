@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Account } from './accounts';
 import { materialize, windowWorkingDir } from './workdir';
+import { inheritedConfigDir, inheritedForeignWorkingDir } from './credentials';
 import { ensureSharedHistory } from './sharedHistory';
 import { log } from './log';
 
@@ -30,6 +31,14 @@ const REPO_MAP_KEY = 'claudeProfiles.repoAccounts';
 /** Global: the account most recently bound anywhere — the default for a new window. */
 const LAST_KEY = 'claudeProfiles.lastAccount';
 const ENV_VAR = 'CLAUDE_CONFIG_DIR';
+/**
+ * When set, Claude Code keys its token storage on THIS instead of ENV_VAR (see
+ * extension.ts). Never set by us; only neutralised where it would pin every
+ * window to one token.
+ */
+const STORAGE_ENV_VAR = 'CLAUDE_SECURESTORAGE_CONFIG_DIR';
+/** Whether this host inherited STORAGE_ENV_VAR — captured before activation drops it. */
+const INHERITED_STORAGE_DIR = process.env[STORAGE_ENV_VAR] !== undefined;
 
 export class WindowBinding {
   /** Fires whenever the active account for this window changes. */
@@ -87,7 +96,7 @@ export class WindowBinding {
     const wasActive = this.context.workspaceState.get<string>(ACTIVE_KEY) === account.name;
     if (wasActive) {
       await this.context.workspaceState.update(ACTIVE_KEY, undefined);
-      delete process.env[ENV_VAR];
+      this.restoreInheritedEnv();
       this.applyTerminalEnv(undefined);
     }
     const map = this.getRepoMap();
@@ -125,9 +134,21 @@ export class WindowBinding {
         await this.context.globalState.update(REPO_MAP_KEY, map);
       }
     }
-    delete process.env[ENV_VAR];
+    this.restoreInheritedEnv();
     this.applyTerminalEnv(undefined);
     this.onDidChange.fire();
+  }
+
+  /**
+   * Unbinds process.env: back to CLAUDE_CONFIG_DIR as this host inherited it —
+   * usually unset, but a user can export one — which is what an unbound window's
+   * Claude Code runs on. Deleting it outright would point new `claude` processes
+   * somewhere else than the dir this extension then tracks.
+   */
+  private restoreInheritedEnv(): void {
+    const inherited = inheritedConfigDir();
+    if (inherited === undefined) delete process.env[ENV_VAR];
+    else process.env[ENV_VAR] = inherited;
   }
 
   /**
@@ -173,7 +194,16 @@ export class WindowBinding {
     const collection = this.context.environmentVariableCollection;
     collection.description = 'Claude account for this window';
     if (dir) collection.replace(ENV_VAR, dir);
+    // Terminals would inherit another window's working dir too (see extension.ts);
+    // empty is what Claude Code reads as unset.
+    else if (inheritedForeignWorkingDir()) collection.replace(ENV_VAR, '');
     else collection.delete(ENV_VAR);
+    // An inherited CLAUDE_SECURESTORAGE_CONFIG_DIR would reach the terminals too
+    // and point every window's `claude` at one token. Pointing it at the window's
+    // own dir makes it name exactly what CLAUDE_CONFIG_DIR does. (A value exported
+    // by the shell's rc file is re-set after this and can't be overridden here.)
+    if (INHERITED_STORAGE_DIR && dir) collection.replace(STORAGE_ENV_VAR, dir);
+    else collection.delete(STORAGE_ENV_VAR);
   }
 
   /**
@@ -197,7 +227,16 @@ export class WindowBinding {
     // stock the dir even when it's empty — unlike the restore at activation, where
     // an empty dir means the user logged out and refilling it would undo that.
     const dir = this.workingDir();
-    materialize(account, dir, true);
+    // Recording the binding for a dir that doesn't hold the account would make the
+    // window look switched while Claude Code still runs — and bills — the old one.
+    if (materialize(account, dir, true) === 'failed') {
+      throw new Error(
+        `could not load ${account.email ?? account.name}: its saved sign-in could not be read` +
+          (process.platform === 'darwin'
+            ? ' — if the macOS login Keychain is locked, unlock it and try again.'
+            : ' — sign in to it again.')
+      );
+    }
     // A working dir born MID-SESSION (a bind between activations, e.g. a manual
     // save in an unbound window) must see the shared history IMMEDIATELY:
     // `claude` processes spawned from now on use this dir, and without the links
@@ -258,7 +297,8 @@ export class WindowBinding {
   }
 
   /**
-   * Ensures NO settings define CLAUDE_CONFIG_DIR, in ANY scope. Two sources
+   * Ensures NO settings define CLAUDE_CONFIG_DIR (or CLAUDE_SECURESTORAGE_CONFIG_DIR,
+   * which overrides it for the token), in ANY scope. Two sources
    * override our per-window process.env and make binding look like a no-op:
    *  - `claudeCode.environmentVariables` (Claude Code merges it OVER the
    *    process env when spawning `claude`) — must be purged from global,
@@ -284,6 +324,10 @@ export class WindowBinding {
       }
     };
 
+    // CLAUDE_SECURESTORAGE_CONFIG_DIR overrides CLAUDE_CONFIG_DIR for the token's
+    // location, so defining it in these machine-wide settings pins every window to
+    // one token just the same.
+    const pinned = (name: string) => name === ENV_VAR || name === STORAGE_ENV_VAR;
     const cfg = vscode.workspace.getConfiguration('claudeCode');
     const info = cfg.inspect<Array<{ name: string; value: string }>>('environmentVariables');
     const envScopes: Array<
@@ -295,7 +339,7 @@ export class WindowBinding {
     ];
     for (const [value, target] of envScopes) {
       if (!value) continue;
-      const filtered = value.filter((e) => e.name !== ENV_VAR);
+      const filtered = value.filter((e) => !pinned(e.name));
       if (filtered.length === value.length) continue;
       await tryUpdate(cfg, 'environmentVariables', filtered.length ? filtered : undefined, target);
     }
@@ -309,9 +353,10 @@ export class WindowBinding {
         [tinfo?.workspaceFolderValue, vscode.ConfigurationTarget.WorkspaceFolder],
       ];
       for (const [value, target] of termScopes) {
-        if (!value || !(ENV_VAR in value)) continue;
+        if (!value || !Object.keys(value).some(pinned)) continue;
         const rest = { ...value };
         delete rest[ENV_VAR];
+        delete rest[STORAGE_ENV_VAR];
         await tryUpdate(term, key, Object.keys(rest).length ? rest : undefined, target);
       }
     }

@@ -3,13 +3,14 @@ import * as path from 'path';
 import * as os from 'os';
 import { AuthStatus } from './cli';
 import { AccountIdentity } from './accounts';
+import { explicitDefaultDir, isDefaultConfigDir, readCredentials, writeCredentials } from './credentials';
 
 /**
  * Snapshots the account currently signed in inside `sourceDir` into a dedicated
  * account directory `targetDir`, copying auth token and identity TOGETHER from
- * the same source so they can never drift apart (the drift between
- * .credentials.json and .claude.json's oauthAccount is exactly what made the
- * old version show one account while billing another).
+ * the same source so they can never drift apart (the drift between the token
+ * and .claude.json's oauthAccount is exactly what made the old version show one
+ * account while billing another).
  *
  * Returns the paths written. Throws if the source has no credentials.
  */
@@ -18,8 +19,11 @@ export function snapshotAccount(
   targetDir: string,
   status: AuthStatus
 ): void {
-  const srcCreds = path.join(sourceDir, '.credentials.json');
-  if (!fs.existsSync(srcCreds)) {
+  const token = readCredentials(sourceDir);
+  if (token === undefined) {
+    throw new Error(`Could not read the sign-in in ${sourceDir} — if the macOS login Keychain is locked, unlock it and try again.`);
+  }
+  if (!token) {
     throw new Error(`No credentials found in ${sourceDir} — sign in first.`);
   }
 
@@ -33,18 +37,14 @@ export function snapshotAccount(
   // world-listable directory still leaks which accounts exist on the machine.
   fs.mkdirSync(targetDir, { recursive: true, mode: 0o700 });
 
-  // 1) Credentials — copy atomically (temp + rename).
-  const dstCreds = path.join(targetDir, '.credentials.json');
-  const tmpCreds = `${dstCreds}.tmp`;
-  fs.copyFileSync(srcCreds, tmpCreds);
-  fs.chmodSync(tmpCreds, 0o600);
-  fs.renameSync(tmpCreds, dstCreds);
+  // 1) Credentials — the file (atomically, temp + rename) or the Keychain item.
+  writeCredentials(targetDir, token);
 
   // 2) Identity (.claude.json). Prefer the real source file; the default
   //    ~/.claude keeps its identity in ~/.claude.json (home) instead.
   const srcIdentity = firstExisting([
     path.join(sourceDir, '.claude.json'),
-    isDefaultDir(sourceDir) ? path.join(os.homedir(), '.claude.json') : '',
+    isDefaultDir(sourceDir) && !explicitDefaultDir() ? path.join(os.homedir(), '.claude.json') : '',
   ]);
   const dstIdentity = path.join(targetDir, '.claude.json');
   if (srcIdentity) {
@@ -96,9 +96,7 @@ function firstExisting(paths: string[]): string | null {
   return null;
 }
 
-function isDefaultDir(dir: string): boolean {
-  return path.normalize(dir) === path.normalize(path.join(os.homedir(), '.claude'));
-}
+const isDefaultDir = isDefaultConfigDir;
 
 /** Default source dir when a window isn't bound to a named account yet. */
 export function defaultSourceDir(): string {
@@ -124,36 +122,43 @@ export function defaultSourceDir(): string {
  * account in use is mirrored into the default dir. Remove the extension at ANY
  * instant, and Claude Code carries on as if it had never been there.
  *
- * This is not "a token in one more place": `~/.claude/.credentials.json` is exactly
- * where Claude Code keeps its token with no extension installed at all — the
- * canonical location, not a new exposure. Forgetting an account still clears it
- * from here too (see dirsHoldingToken).
+ * This is not "a token in one more place": `~/.claude/.credentials.json` (on macOS,
+ * the Keychain item "Claude Code-credentials") is exactly where Claude Code keeps
+ * its token with no extension installed at all — the canonical location, not a
+ * new exposure. Forgetting an account still clears it from here too (see
+ * dirsHoldingToken).
  *
  * Identity goes to `~/.claude.json` at the HOME ROOT, not into the dir: that is
  * where vanilla Claude Code reads it from (verified — a CLAUDE_CONFIG_DIR account
  * keeps it inside the dir instead, and writing it there would leave the default
- * account signed in with no name).
+ * account signed in with no name). The exception proves the rule: when the
+ * user's environment sets CLAUDE_CONFIG_DIR to `~/.claude`, Claude Code reads it
+ * from inside the dir, so that's where it goes.
+ *
+ * Only the FOCUSED window mirrors (the caller's job): with two windows on two
+ * accounts, each mirroring on every reconcile, they would overwrite the default
+ * back and forth forever — each write waking the other one up.
  */
 export function mirrorToDefault(sourceDir: string, identity: AccountIdentity | null): void {
   const defaultDir = defaultSourceDir();
   if (isDefaultDir(sourceDir)) return; // already is the default
-  const srcToken = path.join(sourceDir, '.credentials.json');
-  if (!fs.existsSync(srcToken)) return; // signed out — nothing to mirror
 
   try {
-    const incoming = fs.readFileSync(srcToken);
-    const dstToken = path.join(defaultDir, '.credentials.json');
+    const incoming = readCredentials(sourceDir);
+    if (!incoming) return; // signed out (or unreadable) — nothing to mirror
+    const currentToken = readCredentials(defaultDir);
+    if (currentToken === undefined) return; // can't compare — leave the default as it is
     // Compare before writing: this runs on every focus change, and rewriting an
-    // identical token would churn the file Claude Code watches.
-    if (!fs.existsSync(dstToken) || !fs.readFileSync(dstToken).equals(incoming)) {
+    // identical token would churn the file (or Keychain item) Claude Code watches.
+    if (!currentToken?.equals(incoming)) {
       fs.mkdirSync(defaultDir, { recursive: true, mode: 0o700 });
-      const tmp = `${dstToken}.tmp`;
-      fs.writeFileSync(tmp, incoming, { mode: 0o600 });
-      fs.renameSync(tmp, dstToken); // atomic: a half-written token is worse than none
+      writeCredentials(defaultDir, incoming); // atomic: a half-written token is worse than none
     }
     if (!identity) return;
 
-    const cfg = path.join(os.homedir(), '.claude.json');
+    const cfg = explicitDefaultDir()
+      ? path.join(defaultDir, '.claude.json')
+      : path.join(os.homedir(), '.claude.json');
     let obj: Record<string, unknown> = {};
     try {
       obj = JSON.parse(fs.readFileSync(cfg, 'utf-8')) as Record<string, unknown>;

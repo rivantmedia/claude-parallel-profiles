@@ -62,17 +62,19 @@ jobs:
             # the users this extension is FOR.
             #
             # There is no native code here, so a platform-specific build buys
-            # nothing anyway. The Linux requirement is enforced where it belongs —
-            # at runtime, by the inert mode in extension.ts.
+            # nothing anyway. The platform requirement (Linux or macOS) is enforced
+            # where it belongs — at runtime, by the inert mode in extension.ts.
+            # `*` activation is deliberate (see the README's "Activation order"): the
+            # extension must set CLAUDE_CONFIG_DIR before Claude Code reads it.
             - name: Package extension (universal)
-              run: npx @vscode/vsce package
+              run: npx @vscode/vsce package --allow-star-activation
 
             - name: Create GitHub Release (on tag push)
               uses: softprops/action-gh-release@v2
               if: startsWith(github.ref, 'refs/tags/')
               with:
                   files: "*.vsix"
-                  name: "Claude Parallel Accounts ${{ github.ref_name }}"
+                  name: "Claude Parallel Profiles ${{ github.ref_name }}"
                   generate_release_notes: true
                   draft: false
                   prerelease: false
@@ -85,7 +87,7 @@ jobs:
               with:
                   files: "*.vsix"
                   tag_name: ${{ steps.package_version.outputs.tag }}
-                  name: "Claude Parallel Accounts ${{ steps.package_version.outputs.tag }}"
+                  name: "Claude Parallel Profiles ${{ steps.package_version.outputs.tag }}"
                   generate_release_notes: true
                   draft: false
                   prerelease: false
