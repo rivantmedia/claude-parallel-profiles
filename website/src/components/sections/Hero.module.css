@@ -1,0 +1,77 @@
+/*
+ * Hero layout that the utilities can't express: the sparks are placed from
+ * the headline's own size, so they stay clear of its letters at every width.
+ */
+.content {
+	/*
+	 * The hero headline's size: the text-hero scale, but it stops growing
+	 * where the 1440px column does (10.4% of 1440px is 9.36rem). Past that
+	 * the headline and the sparks beside it would outgrow the column and run
+	 * off the right edge; instead the 1440 layout is simply centred.
+	 */
+	--hero-fs: clamp(3rem, 10.4vw, 9.36rem);
+	/* The sparks' box on phones and tablets; its height is 164/188 of its
+	   width. */
+	--sparks-w: min(46vw, 15rem);
+	/* Room above the figures line for the sparks. */
+	padding-top: calc(var(--sparks-w) * 0.8723 + 2.75rem);
+}
+
+/*
+ * Phones and tablets: the first line fills (or nearly fills) the width, so
+ * the sparks sit above the figures line, against the right edge. From lg the
+ * first line leaves the right fifth free, so they move beside it: their box
+ * starts past the end of "Claude Parallel" (about 6.74em at rest, plus room
+ * for the pointer swelling its last letters) and sits level with the
+ * headline, dipping beside "Profiles", which is far shorter.
+ */
+.sparks {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + 1.25rem);
+	z-index: -1;
+	width: var(--sparks-w);
+}
+
+/*
+ * Tablets: the platforms line has moved down under the command, so the top
+ * row holds only the eyebrows, on the left. The sparks, a size smaller, rise
+ * beside them into that empty right-hand side, which keeps the name, the
+ * promise and the buttons higher up the screen.
+ */
+@media (min-width: 48rem) {
+	.content {
+		--sparks-w: 13rem;
+		padding-top: calc(var(--sparks-w) * 0.8723 - 0.5rem);
+	}
+}
+
+/* The headline itself takes the capped size (the line height and tracking
+   stay text-hero's). */
+.headline {
+	font-size: var(--hero-fs);
+}
+
+/*
+ * Short screens (a phone on its side): smaller sparks and less room above
+ * the figures line, so the name reaches the first screen.
+ */
+@media (max-height: 30rem) {
+	.content {
+		--sparks-w: 8rem;
+		padding-top: calc(var(--sparks-w) * 0.8723 - 0.5rem);
+	}
+}
+
+@media (min-width: 64rem) {
+	.content {
+		padding-top: 3rem;
+	}
+
+	.sparks {
+		right: auto;
+		left: calc(var(--hero-fs) * 7.3);
+		bottom: calc(var(--hero-fs) * 0.3);
+		width: calc(var(--hero-fs) * 1.66);
+	}
+}

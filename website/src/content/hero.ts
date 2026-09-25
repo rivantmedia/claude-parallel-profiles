@@ -2,15 +2,19 @@
  * Hero: the first screen. The eyebrow names the umbrella, the headline is the
  * product’s name, the promise is one sentence, and the figures line is built
  * only from facts that can be checked (the bundle size is the minified
- * dist/extension.js of 1.4.0: 45,533 bytes).
+ * dist/extension.js: 45,533 bytes).
  */
 import { links } from "./links";
-import type { ContrastHeading, LinkRef, Rich } from "./types";
+import type { ContrastHeading, LinkRef } from "./types";
 
-export type Figure = {
-	/** Set a step brighter, in tabular numerals. */
+/**
+ * One figure in the line over the headline: an optional lead-in, the value
+ * (set a step brighter, in tabular numerals) and an optional noun after it.
+ */
+type Figure = {
+	readonly before?: string;
 	readonly value: string;
-	readonly noun: string;
+	readonly noun?: string;
 };
 
 export type Hero = {
@@ -18,16 +22,21 @@ export type Hero = {
 		readonly label: string;
 		readonly tag: string;
 	};
-	readonly name: string;
-	/** The name in weight contrast, for the giant headline. */
+	/**
+	 * The name for the giant headline, one line per run. As on rivant.in,
+	 * every letter rests at the same light weight and the lines differ by
+	 * colour: the `light` run in mist, then the `heavy` run in paper. The
+	 * pointer’s letter accordion supplies the weight.
+	 */
 	readonly headline: ContrastHeading;
 	/** One sentence: what it does. */
 	readonly promise: string;
 	/** The line under the promise. */
-	readonly support: Rich;
+	readonly support: string;
 	/**
-	 * “0 network calls, 0 runtime dependencies and a ~45 KB bundle”, with a
-	 * quieter tail. `text` is the whole line as one string, for screen readers.
+	 * “0 network calls, 0 runtime dependencies and a bundle of about 45 KB”,
+	 * with a quieter tail. `text` is the whole line as one string, for screen
+	 * readers.
 	 */
 	readonly figures: {
 		readonly items: readonly Figure[];
@@ -38,16 +47,26 @@ export type Hero = {
 	readonly secondary: LinkRef;
 	/** A quiet text link, dropped where the row gets crowded. */
 	readonly tertiary: LinkRef;
-	/** Next to the buttons: what has to be installed already. */
+	/**
+	 * Under the install command: what has to be installed already. Reads as
+	 * one sentence, `before` + the link + `after`.
+	 */
 	readonly requires: {
-		readonly text: string;
+		readonly before: string;
 		readonly link: LinkRef;
+		readonly after: string;
 	};
 	readonly platforms: {
-		readonly label: string;
 		readonly items: readonly string[];
+		/** The same line as a sentence, for screen readers. */
+		readonly text: string;
 	};
-	readonly scrollCue: string;
+	/**
+	 * Faint vertical type at the hero’s right edge (the style font): a line
+	 * about the project, as rivant.in sets its tagline there. (The umbrella
+	 * is already in the nav and the eyebrow.)
+	 */
+	readonly sideline: string;
 };
 
 export const hero: Hero = {
@@ -55,11 +74,10 @@ export const hero: Hero = {
 		label: "Rivant for the Community",
 		tag: "Open source"
 	},
-	name: "Claude Parallel Profiles",
 	headline: {
 		runs: [
-			{ text: "Claude Parallel", weight: "heavy" },
-			{ text: "Profiles", weight: "light" }
+			{ text: "Claude Parallel", weight: "light" },
+			{ text: "Profiles", weight: "heavy" }
 		],
 		plain: "Claude Parallel Profiles"
 	},
@@ -71,7 +89,7 @@ export const hero: Hero = {
 		items: [
 			{ value: "0", noun: "network calls" },
 			{ value: "0", noun: "runtime dependencies" },
-			{ value: "~45 KB", noun: "bundle" }
+			{ before: "a bundle of about", value: "45 KB" }
 		],
 		tail: "MIT licensed",
 		text: "Zero network calls, zero runtime dependencies and a bundle of about 45 KB. MIT licensed."
@@ -92,16 +110,17 @@ export const hero: Hero = {
 		external: false
 	},
 	requires: {
-		text: "Works alongside the official Claude Code extension, which must be installed.",
+		before: "Works alongside the official ",
 		link: {
-			label: "Claude Code for VS Code",
+			label: "Claude Code extension",
 			href: links.claudeCode,
 			external: true
-		}
+		},
+		after: ", which must be installed."
 	},
 	platforms: {
-		label: "Runs on",
-		items: ["Linux", "macOS", "WSL", "Remote-SSH", "Dev containers"]
+		items: ["Linux", "macOS", "WSL", "Remote-SSH", "Dev containers"],
+		text: "Runs on Linux, macOS, WSL, Remote-SSH and dev containers."
 	},
-	scrollCue: "Scroll"
+	sideline: "one account per window"
 };

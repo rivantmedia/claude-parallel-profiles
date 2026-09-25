@@ -1,13 +1,14 @@
 import { ArrowUpIcon, ArrowUpRightIcon } from "@phosphor-icons/react/ssr";
-import Link from "next/link";
 import {
 	Container,
+	ExternalLabel,
+	InternalLink,
 	Lockup,
 	NEW_TAB_HINT,
 	Parallax,
 	Shape
 } from "~/components/primitives";
-import { siteConfig } from "~/config/site";
+import { site, type LinkRef } from "~/content";
 import { cn } from "~/lib/utils";
 import styles from "./Footer.module.css";
 
@@ -35,20 +36,19 @@ const linkClass = cn(
 	"group inline-flex min-h-11 items-center gap-1.5 text-[0.9375rem] text-bone transition-colors duration-300 ease-spring hover:text-paper lg:min-h-10"
 );
 
-type FooterLink = { label: string; href: string; external: boolean };
-
-/** One footer link: internal through next/link, external in a new tab with
-    a small arrow (and the same hint in words for screen readers). */
-function FooterLink({ link }: { link: FooterLink }) {
+/** One footer link: internal through InternalLink (which marks the page
+    being viewed with aria-current), external in a new tab with a small arrow
+    (and the same hint in words for screen readers). */
+function FooterLink({ link }: { link: LinkRef }) {
 	const label = <span className={styles.label}>{link.label}</span>;
 	if (!link.external) {
 		return (
-			<Link
+			<InternalLink
 				href={link.href}
 				className={linkClass}
 			>
 				{label}
-			</Link>
+			</InternalLink>
 		);
 	}
 	return (
@@ -69,19 +69,6 @@ function FooterLink({ link }: { link: FooterLink }) {
 	);
 }
 
-const rivantLinks: FooterLink[] = [
-	{
-		label: siteConfig.rivant.urlLabel,
-		href: siteConfig.rivant.url,
-		external: true
-	},
-	...siteConfig.socials.map((social) => ({
-		label: social.label,
-		href: social.href,
-		external: true
-	}))
-];
-
 /**
  * Site footer, as on rivant.in: a carbon panel with a rounded top, quiet
  * link columns and a meta row, so the giant RIVANT wordmark at the very
@@ -91,6 +78,7 @@ const rivantLinks: FooterLink[] = [
  */
 export function Footer() {
 	const year = new Date().getFullYear();
+	const { footer } = site;
 
 	return (
 		<footer
@@ -100,76 +88,72 @@ export function Footer() {
 			<Container>
 				<div className="grid grid-cols-2 gap-x-6 gap-y-12 md:grid-cols-3 lg:grid-cols-12 lg:gap-x-10">
 					<div className="col-span-2 md:col-span-3 lg:col-span-5">
-						<p className="sr-only">{siteConfig.umbrella}</p>
+						<p className="sr-only">{site.umbrella}</p>
 						<Lockup />
 						<p className="mt-6 max-w-[40ch] text-[0.9375rem] leading-relaxed text-pretty text-mist">
-							{siteConfig.footerLine}
+							{footer.statement}
 						</p>
 						<p className="mt-4 max-w-[46ch] text-sm leading-relaxed text-pretty text-ash">
-							A fork of{" "}
+							{footer.original.before}
 							<a
-								href={siteConfig.links.original}
+								href={footer.original.link.href}
 								target="_blank"
 								rel="noopener noreferrer"
 								className="text-bone underline decoration-smoke underline-offset-[0.25em] transition-[text-decoration-color,color] duration-300 ease-out-expo hover:text-paper hover:decoration-paper"
 							>
-								DercasDrol’s Claude Parallel Accounts
-								<span className="sr-only"> {NEW_TAB_HINT}</span>
+								<ExternalLabel>
+									{footer.original.link.label}
+								</ExternalLabel>
 							</a>
-							. All credit for the original design goes to its
-							author.
+							{footer.original.after}
 						</p>
 					</div>
 
-					<nav
-						aria-labelledby="footer-project"
-						className="lg:col-span-2 lg:col-start-7"
-					>
-						<ColumnHeading id="footer-project">
-							Project
-						</ColumnHeading>
-						<ul className="mt-4">
-							{siteConfig.footer.project.map((link) => (
-								<li key={link.href}>
-									<FooterLink link={link} />
-								</li>
-							))}
-						</ul>
-					</nav>
-
-					<nav
-						aria-labelledby="footer-rivant"
-						className="lg:col-span-2"
-					>
-						<ColumnHeading id="footer-rivant">
-							{siteConfig.rivant.name}
-						</ColumnHeading>
-						<ul className="mt-4">
-							{rivantLinks.map((link) => (
-								<li key={link.href}>
-									<FooterLink link={link} />
-								</li>
-							))}
-						</ul>
-					</nav>
+					{footer.columns.map((column, index) => (
+						<nav
+							key={column.title}
+							aria-labelledby={`footer-column-${index}`}
+							className={cn(
+								"lg:col-span-2",
+								index === 0 && "lg:col-start-7"
+							)}
+						>
+							<ColumnHeading id={`footer-column-${index}`}>
+								{column.title}
+							</ColumnHeading>
+							<ul className="mt-4">
+								{column.links.map((link) => (
+									<li key={link.href}>
+										<FooterLink link={link} />
+									</li>
+								))}
+							</ul>
+						</nav>
+					))}
 
 					<div className="col-span-2 md:col-span-1 lg:col-span-2">
 						<ColumnHeading id="footer-release">
-							Release
+							{footer.release.title}
 						</ColumnHeading>
 						<dl
 							aria-labelledby="footer-release"
 							className="mt-4 grid gap-3 text-[0.9375rem]"
 						>
 							<div className="flex items-baseline justify-between gap-4 border-b border-slate pb-3">
-								<dt className="text-ash">Version</dt>
+								<dt className="text-ash">
+									{footer.release.version}
+								</dt>
 								<dd className="text-paper tabular-nums">
-									{siteConfig.version}
+									{site.version}
 								</dd>
 							</div>
 							<div className="flex items-baseline justify-between gap-4 border-b border-slate pb-3">
-								<dt className="text-ash">Licence</dt>
-								<dd className="text-paper">MIT</dd>
+								<dt className="text-ash">
+									{footer.release.license}
+								</dt>
+								<dd className="text-paper">
+									{footer.release.licenseName}
+								</dd>
 							</div>
 						</dl>
 					</div>
@@ -179,7 +163,7 @@ export function Footer() {
 					<div className="flex flex-col gap-1.5 text-sm text-ash">
 						<p className="flex flex-col gap-x-10 gap-y-1.5 lg:flex-row">
 							<span>
-								&copy; {year} {siteConfig.rivant.legalName}
+								&copy; {year} {site.copyrightHolders}
 								<span
 									aria-hidden="true"
 									className="hidden sm:inline"
@@ -188,35 +172,35 @@ export function Footer() {
 								</span>
 								<span className="sr-only">. </span>
 								<span className="block sm:inline">
-									{siteConfig.legal.license}
+									{footer.license}
 								</span>
 							</span>
 							<span>
-								Designed and developed by{" "}
+								{footer.credit}{" "}
 								<a
-									href={siteConfig.rivant.url}
+									href={site.rivant.href}
 									target="_blank"
 									rel="noopener noreferrer"
 									className="text-bone underline decoration-smoke underline-offset-[0.25em] transition-[text-decoration-color,color] duration-300 ease-out-expo hover:text-paper hover:decoration-paper"
 								>
-									{siteConfig.rivant.name}
-									<span className="sr-only">
-										{" "}
-										{NEW_TAB_HINT}
-									</span>
+									<ExternalLabel>
+										{site.rivant.name}
+									</ExternalLabel>
 								</a>
 							</span>
 						</p>
 						<p className="max-w-[72ch] text-[0.8125rem] leading-relaxed">
-							{siteConfig.legal.disclaimer}
+							{footer.disclaimer}
 						</p>
 					</div>
 
-					<Link
-						href="/#top"
+					{/* The top of this page, whichever page it is: <main> is
+					    focusable, so focus goes back up with the scroll. */}
+					<a
+						href="#main-content"
 						className="group inline-flex min-h-12 shrink-0 items-center gap-3 text-sm font-semibold text-mist transition-colors duration-300 ease-spring hover:text-paper"
 					>
-						Back to top
+						{footer.backToTop}
 						<span
 							aria-hidden="true"
 							className="grid size-12 place-items-center rounded-full ring-1 ring-smoke/70 transition-[background-color,color,box-shadow] duration-500 ease-spring ring-inset group-hover:bg-paper group-hover:text-void group-hover:ring-paper"
@@ -226,7 +210,7 @@ export function Footer() {
 								className="size-[18px] transition-transform duration-500 ease-spring group-hover:-translate-y-0.5"
 							/>
 						</span>
-					</Link>
+					</a>
 				</div>
 
 				{/*
@@ -262,21 +246,15 @@ export function Footer() {
 					</Parallax>
 
 					<span className={styles.word}>
-						{[...siteConfig.rivant.shortName].map(
-							(letter, index) => (
-								<span
-									key={index}
-									className={styles.letter}
-									style={
-										{ "--i": index } as React.CSSProperties
-									}
-								>
-									<span className={styles.glyph}>
-										{letter}
-									</span>
-								</span>
-							)
-						)}
+						{[...site.lockup.wordmark].map((letter, index) => (
+							<span
+								key={index}
+								className={styles.letter}
+								style={{ "--i": index } as React.CSSProperties}
+							>
+								<span className={styles.glyph}>{letter}</span>
+							</span>
+						))}
 					</span>
 				</div>
 			</Container>

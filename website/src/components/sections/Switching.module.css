@@ -1,0 +1,37 @@
+/*
+ * The signature line (name, hairline, role), set like rivant.in's Statement
+ * signature. On hover the hairline stretches a little either way, into the
+ * gaps beside it.
+ */
+.hairline {
+	display: block;
+	width: 2rem;
+	height: 1px;
+	background-color: var(--color-smoke);
+	transition:
+		transform 500ms var(--ease-spring),
+		background-color 300ms var(--ease-out-expo);
+}
+
+.signature:hover .hairline {
+	transform: scaleX(1.4);
+	background-color: var(--color-mist);
+}
+
+/* The narrowest phones: the line drops the hairline to fit the width. */
+@media (width < 22.5rem) {
+	.hairline {
+		display: none;
+	}
+}
+
+/* The focus ring hugs the line with a little room, like a pill. */
+.signature:focus-visible {
+	outline-offset: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.hairline {
+		transition: none;
+	}
+}

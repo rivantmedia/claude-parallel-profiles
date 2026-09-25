@@ -2,7 +2,7 @@
 
 import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import { cn } from "~/lib/utils";
+import { cx } from "~/lib/cx";
 
 /** How long the confirmation shows before the button resets, in ms. */
 const RESET_MS = 2000;
@@ -67,10 +67,13 @@ export function CopyButton({
 				type="button"
 				onClick={onClick}
 				aria-label={children ? undefined : label}
-				className={cn(
-					"inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-full text-sm font-semibold text-mist ring-1 ring-smoke/70 transition-[color,background-color,box-shadow,scale] duration-500 ease-spring ring-inset hover:bg-paper hover:text-void hover:ring-paper active:scale-95",
+				className={cx(
+					// Hidden until the page's scripts run: it can't copy without them.
+					"needs-js inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-full text-sm font-semibold ring-1 transition-[color,background-color,box-shadow,scale] duration-500 ease-spring ring-inset hover:bg-paper hover:text-void hover:ring-paper active:scale-95",
 					children && "px-4",
-					state === "copied" && "text-paper ring-paper/50",
+					state === "copied"
+						? "text-paper ring-paper/50"
+						: "text-mist ring-smoke/70",
 					className
 				)}
 			>

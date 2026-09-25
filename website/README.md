@@ -19,7 +19,7 @@ Run everything from this folder (`website/`), with Node 20.9 or newer.
 | `npm run dev`          | Development server at <http://localhost:3000>                    |
 | `npm run build`        | Static export to `out/`                                          |
 | `npm run preview`      | Build, then serve `out/` the way Pages will (see below)          |
-| `npm start`            | Serve the existing `out/` without rebuilding                     |
+| `npm start`            | Serve the existing `out/` without rebuilding (see below)         |
 | `npm run lint`         | ESLint (Next's rules plus Rivant Media's type-aware house rules) |
 | `npm run typecheck`    | Generate Next's route types, then `tsc --noEmit`                 |
 | `npm run format:check` | Prettier with the Rivant house style and Tailwind class sorting  |
@@ -32,6 +32,10 @@ NEXT_PUBLIC_BASE_PATH=/claude-parallel-profiles npm run preview
 # then open http://localhost:4173/claude-parallel-profiles/
 ```
 
+`npm start` serves `out/` at the root unless it is given the same
+`NEXT_PUBLIC_BASE_PATH` the build had; with a mismatch every page loads without
+its styles and scripts.
+
 ## Environment
 
 | Variable                | Default                                                  | Used for                                       |
@@ -42,35 +46,48 @@ NEXT_PUBLIC_BASE_PATH=/claude-parallel-profiles npm run preview
 The extension's version shown on the site is read from `../package.json` at
 build time, so it never drifts from the release.
 
-Any link to a file in `public/` (art, logos, the Open Graph image) must go through
-`asset()` in `src/lib/asset.ts`, which adds the base path. Next adds it to its own
-links, scripts and fonts, but not to plain strings.
+Any link to a file in `public/` (the brand shapes) must go through `asset()` in
+`src/lib/asset.ts`, which adds the base path. Next adds it to its own links,
+scripts and fonts, but not to plain strings. Metadata URLs (the Open Graph image,
+canonical links) are relative and resolve against `metadataBase`, which already
+carries the site URL and base path.
 
 ## Deploying
 
 `.github/workflows/pages.yml` builds and publishes the site on every push to
-`main` that touches `website/**`, `CHANGELOG.md` (the changelog page renders it)
-or the workflow itself, and on demand from the Actions tab. It reads the base
-path from `actions/configure-pages`, so a custom domain needs no code change.
+`main` that touches `website/**`, `CHANGELOG.md` (the changelog page renders it),
+the extension's `package.json` (the footer shows its version) or the workflow
+itself, and on demand from the Actions tab. It reads the base path from
+`actions/configure-pages`, so a custom domain needs no code change.
 
-One-time setup: in the repository's **Settings > Pages**, set **Source** to
-**GitHub Actions**.
+Pull requests that touch the same files run the same build, plus `lint`,
+`format:check` and `typecheck`, without deploying.
+
+One-time setup, before the first merge: in the repository's **Settings > Pages**,
+set **Source** to **GitHub Actions**. That also creates the `github-pages`
+environment. Without it the first run stops at "Configure Pages"; once it is set,
+re-run the workflow from the Actions tab.
 
 ## Where things live
 
 - `src/content/`: all of the site's copy, as typed modules. Edit words here.
-- `src/config/site.ts`: names, addresses, navigation and the Rivant Media details.
+  `site.ts` holds the name, metadata, nav and footer; `links.ts` every outside
+  address. The version comes from the extension's `package.json` at build time.
 - `src/components/sections/`: one component per homepage section, in page order
   in `src/app/page.tsx`.
 - `src/components/primitives/`: the design system's building blocks (Section,
-  Container, Eyebrow, Heading, SplitText, Reveal, Parallax, Shape, PillButton,
-  Command and more).
+  SectionIntro, Container, Eyebrow, Heading, SplitText, Reveal, Parallax, Shape,
+  PillButton, Accordion, Command and more).
 - `src/components/providers/Motion.tsx`: the scroll layer behind reveals,
   parallax and magnetic buttons.
 - `src/styles/globals.css`: Rivant Media's tokens (nine greys, type scale,
   eases) plus the project's spark accents, and every motion class.
-- `public/art/`: the six brand shapes. `public/brand/`: the official Rivant Media
-  logos, used as supplied. `src/fonts/`: Blackout, with its SIL OFL licence.
+- `public/art/`: the six brand shapes. The Rivant logomark is inlined by the
+  `Logo` primitive, path as supplied. `src/fonts/`: Blackout (WOFF2), with its
+  SIL OFL licence.
+- `src/app/icon.png`, `apple-icon.png`: the extension's icon without its "by
+  Rivant" sign-off, which is unreadable at favicon sizes; the nav and footer
+  carry the lockup. The Marketplace keeps the signed icon (`images/icon.png`).
 
 ## Brand
 

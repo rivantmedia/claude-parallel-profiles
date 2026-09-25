@@ -1,8 +1,14 @@
 name: Website
 
 # Builds the site in website/ (Next.js static export) and publishes it to
-# GitHub Pages. Enable Pages once in the repository settings with
-# Source = "GitHub Actions".
+# GitHub Pages. Pull requests get the same checks and build, without the
+# deploy.
+#
+# One-time setup, before the first merge: Settings > Pages > Source =
+# "GitHub Actions" (this also creates the github-pages environment). Without
+# it, "Configure Pages" fails; set it, then re-run from the Actions tab.
+# Enabling Pages from here would need a token with admin rights, which isn't
+# worth storing for a one-time switch.
 
 on:
     push:
@@ -11,19 +17,28 @@ on:
         paths:
             - "website/**"
             - "CHANGELOG.md"
+            # The site shows the extension's version from package.json.
+            - "package.json"
+            - ".github/workflows/pages.yml"
+    pull_request:
+        branches:
+            - main
+        paths:
+            - "website/**"
+            - "CHANGELOG.md"
+            - "package.json"
             - ".github/workflows/pages.yml"
     workflow_dispatch:
 
 permissions:
     contents: read
-    pages: write
-    id-token: write
 
 # One deployment at a time; a newer push waits rather than cancelling one
-# that is already publishing.
+# that is already publishing. Pull requests queue apart, and a newer commit
+# cancels the check of an older one.
 concurrency:
-    group: "pages"
-    cancel-in-progress: false
+    group: ${{ github.event_name == 'pull_request' && format('pages-pr-{0}', github.ref) || 'pages' }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
     build:
@@ -31,10 +46,10 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v7
 
             - name: Setup Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v7
               with:
                   node-version: "22"
                   cache: "npm"
@@ -42,33 +57,58 @@ jobs:
 
             - name: Configure Pages
               id: pages
-              uses: actions/configure-pages@v5
+              if: github.event_name != 'pull_request'
+              uses: actions/configure-pages@v6
 
             - name: Install dependencies
               working-directory: website
               run: npm ci
 
+            # Next 16's build no longer runs ESLint, so the checks run here.
+            - name: Lint
+              working-directory: website
+              run: npm run lint
+
+            - name: Check formatting
+              working-directory: website
+              run: npm run format:check
+
+            - name: Typecheck
+              working-directory: website
+              run: npm run typecheck
+
             # base_path is "/claude-parallel-profiles" on a project site and ""
             # on a custom domain; asset() and next.config.ts both read it.
+            # base_url is the full address the site is served from, so the
+            # canonical, Open Graph and sitemap URLs follow a custom domain too.
+            # A pull request builds as the project site.
             - name: Build
               working-directory: website
               run: npm run build
               env:
-                  NEXT_PUBLIC_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+                  NEXT_PUBLIC_BASE_PATH: ${{ github.event_name == 'pull_request' && '/claude-parallel-profiles' || steps.pages.outputs.base_path }}
+                  NEXT_PUBLIC_SITE_URL: ${{ steps.pages.outputs.base_url }}
 
             - name: Upload artifact
-              uses: actions/upload-pages-artifact@v3
+              if: github.event_name != 'pull_request'
+              uses: actions/upload-pages-artifact@v5
               with:
                   path: website/out
 
     deploy:
         name: Deploy
         needs: build
+        if: github.event_name != 'pull_request'
         runs-on: ubuntu-latest
+        # Only this job can publish; the build (which runs npm ci and its
+        # packages' install scripts) never holds the deploy credentials.
+        permissions:
+            pages: write
+            id-token: write
         environment:
             name: github-pages
             url: ${{ steps.deployment.outputs.page_url }}
         steps:
             - name: Deploy to GitHub Pages
               id: deployment
-              uses: actions/deploy-pages@v4
+              uses: actions/deploy-pages@v5

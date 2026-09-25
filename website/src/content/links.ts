@@ -3,7 +3,7 @@
  * their hrefs from here, so a moved repository or listing is one edit.
  */
 
-export type Links = {
+type Links = {
 	readonly marketplace: string;
 	readonly rate: string;
 	readonly github: string;
@@ -32,5 +32,5 @@ export const links: Links = {
 };
 
 /** The Marketplace id, and the one-line install for a terminal. */
-export const extensionId = "rivantmedia.claude-parallel-profiles";
+const extensionId = "rivantmedia.claude-parallel-profiles";
 export const installCommand = `code --install-extension ${extensionId}`;

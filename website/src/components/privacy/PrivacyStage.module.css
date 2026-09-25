@@ -1,0 +1,390 @@
+/*
+ * The privacy statement's pinned stage (after rivant.in's Statement).
+ *
+ * The track is what scrolls. At twice the stage's height the stage stays
+ * pinned for one screen of scroll, which is the window between --progress
+ * 1/3 and 2/3 (the scroll layer measures the track from its top meeting the
+ * viewport's bottom to its bottom meeting the viewport's top). That window is
+ * centred on 0.5, so every layer sits at its designed resting place halfway
+ * through the pin. Both heights are in svh so the pin holds on phones too
+ * (the vh lines are fallbacks).
+ */
+.track {
+	position: relative;
+	height: 200vh;
+	height: 200svh;
+}
+
+.stage {
+	/* The track's progress, re-exposed for everything on the stage. */
+	--track: var(--progress, 0.5);
+	/* How far layers travel. Phones and portrait tablets (the stacked
+	   layout) get about half, so shapes stay near their posts. */
+	--reach: 0.55;
+	position: sticky;
+	top: 0;
+	display: flex;
+	height: 100vh;
+	height: 100svh;
+	align-items: center;
+	/* Centres the type in the space below the fixed nav, not behind it. */
+	padding-top: 4.5rem;
+	overflow: clip;
+}
+
+/* From md the bottom edge blur is taller than the room a phone leaves under
+   the signature, so the stage keeps that band clear too. */
+@media (width >= 48rem) {
+	.stage {
+		padding-bottom: min(5.5rem, 10svh);
+	}
+}
+
+@media (width >= 64rem) {
+	.stage {
+		--reach: 1;
+	}
+}
+
+/*
+ * Layers on the stage follow the track, not their own progress. Scaling
+ * around 0.5 keeps the resting place and shortens the travel on phones.
+ * Two classes, so it wins over the global .parallax's own --p.
+ */
+.stage .onTrack {
+	--p: calc(0.5 + (var(--track) - 0.5) * var(--reach));
+	pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ type */
+
+/*
+ * One word per line, staggered, centred on the stage so shapes can frame it
+ * from both sides. Sized by the width, and by the height left once the nav,
+ * the bottom edge blur, the eyebrow and the signature have theirs (17rem),
+ * so the five-line stack always fits the pinned stage. Screens too short for
+ * even the smallest size don't pin at all (below). The notch shapes are
+ * placed in em, against this size.
+ */
+.type {
+	position: relative;
+	width: fit-content;
+	margin-inline: auto;
+	font-size: clamp(
+		2.75rem,
+		min(14.5vw, 12.5svh, calc((100svh - 17rem) / 5.2)),
+		9.5rem
+	);
+}
+
+/* Its own block at the page's size, so the line box around the pill
+   isn't sized by the huge type. */
+.eyebrow {
+	display: flex;
+	margin-bottom: 2.25rem;
+	font-size: 1rem;
+	line-height: 1;
+}
+
+.line {
+	position: relative;
+	font-family: var(--font-display);
+	font-size: 1em;
+	font-weight: 900;
+	line-height: 0.92;
+	letter-spacing: -0.045em;
+	color: var(--color-paper);
+	text-wrap: nowrap;
+}
+
+/* Blocks, so the stack never depends on the width it is given. */
+.line .word {
+	display: block;
+	width: fit-content;
+}
+
+/* Editorial contrast: the connective words go extralight italic, in mist. */
+.line .light {
+	font-weight: 200;
+	font-style: italic;
+	letter-spacing: -0.03em;
+	color: var(--color-mist);
+	/* The italic leans right; a hair of room keeps its last letter whole. */
+	padding-right: 0.06em;
+}
+
+/*
+ * The stagger, word by word ("No / network / code / at / all."): "network"
+ * tucks its n under the end of "No", "code" steps back to the margin, and
+ * the two light words walk out to the right, leaving notches for the shapes.
+ */
+.line [data-word="2"] {
+	margin-left: 1.3em;
+}
+
+.line [data-word="3"] {
+	margin-left: 0.3em;
+}
+
+.line [data-word="4"] {
+	margin-top: 0.04em;
+	margin-left: 3.55em;
+}
+
+.line [data-word="5"] {
+	margin-left: 2.25em;
+}
+
+/*
+ * The first word starts to lift as the stage arrives and is lit as the pin
+ * begins (1/3); the last is fully lit a little before half way, so the
+ * finished line holds for the second half of the pin before the stage lets
+ * go. Two classes, so it wins over the global .reveal-scrub.
+ */
+.line:global(.reveal-scrub) {
+	--scrub: clamp(0, calc((var(--track, 1) - 0.2) / 0.32), 1);
+}
+
+/* The line and the shapes tucked into its notches share this box. */
+.lineBox {
+	position: relative;
+}
+
+/* In the gap right of "No", clear of the ascenders of "network" even
+   while it runs ahead of the scroll at the start of the pin. */
+.notchTrio {
+	position: absolute;
+	top: -0.08em;
+	left: 3.05em;
+	width: 1.85em;
+}
+
+/* In the gap left of "at" and "all.", under "code". */
+.notchCapsule {
+	position: absolute;
+	bottom: 0.1em;
+	left: 0.45em;
+	width: 1.35em;
+}
+
+/* ------------------------------------------------------------ side shapes */
+
+/*
+ * Phones and portrait tablets: the type fills the width, so the rings sit
+ * cropped off the right edge above it and the orbs off the left edge below
+ * it, small enough to stay clear of the eyebrow and the signature.
+ * Landscape: the type leaves corridors either side, so the knot takes the
+ * upper left and the pill the lower right as well, framing the line from all
+ * four corners.
+ *
+ * Shapes are cropped by the page's side edges only, never by the stage's own
+ * top or bottom: those aren't edges of the layout, and a cut there shows as
+ * a hard line while the stage arrives or leaves. So every layer rests at
+ * least its full travel (half its depth, times --reach) inside them, plus a
+ * little more for its turn: the rings (depth 160, turning 18deg) and orbs
+ * (200) below.
+ *
+ * On phones the rings shrink with the screen's height, so on short phones
+ * they stay above the eyebrow, and a third of them always hangs off the
+ * edge, whatever their size.
+ */
+.rings {
+	--size: min(70vw, 26svh);
+	position: absolute;
+	top: calc(1.25rem + 85px * var(--reach));
+	right: calc(var(--size) * -0.37);
+	width: var(--size);
+}
+
+.orbs {
+	position: absolute;
+	bottom: calc(0.5rem + 105px * var(--reach));
+	left: -24vw;
+	width: min(54vw, 25svh);
+}
+
+.pill,
+.knot {
+	display: none;
+}
+
+@media (width >= 64rem) {
+	.rings {
+		top: max(15%, 8.25rem);
+		right: -9vw;
+		width: 31vw;
+		max-width: 560px;
+	}
+
+	.orbs {
+		bottom: max(14%, 7rem);
+		left: -13vw;
+		width: 27vw;
+		max-width: 500px;
+	}
+
+	.pill {
+		position: absolute;
+		right: -15vw;
+		bottom: 18%;
+		display: block;
+		width: 28vw;
+		max-width: 520px;
+	}
+
+	.knot {
+		position: absolute;
+		top: 22%;
+		left: 7vw;
+		display: block;
+		width: 8.5vw;
+		max-width: 150px;
+	}
+}
+
+@media (width >= 80rem) {
+	.pill {
+		right: -11vw;
+	}
+
+	.orbs {
+		left: -10vw;
+	}
+}
+
+/* ------------------------------------------------------------- signature */
+
+.signature {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.75rem 0.875rem;
+	margin-top: 2.75rem;
+	font-size: var(--text-eyebrow);
+	font-weight: 600;
+	line-height: 1;
+	letter-spacing: var(--text-eyebrow--letter-spacing);
+	white-space: nowrap;
+	text-transform: uppercase;
+	color: var(--color-ash);
+}
+
+/* Phones: the two halves stack, right-aligned, and the rule between them
+   goes, so the line never breaks beside a dangling rule. */
+@media (width < 40rem) {
+	.signature {
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 0.625rem;
+	}
+
+	.signatureRule {
+		display: none;
+	}
+}
+
+/* Settles in once the line is lit. Hidden only under js-ready, so it is
+   never lost without JavaScript. */
+:global(html.js-ready) .signature {
+	--in: clamp(0, calc((var(--track, 1) - 0.46) / 0.08), 1);
+	opacity: var(--in);
+	transform: translate3d(0, calc((1 - var(--in)) * 0.75rem), 0);
+}
+
+/* ----------------------------------------------------------------- ghost */
+
+/*
+ * A faint word far behind the line. As the farthest layer it lags the most,
+ * and it drifts sideways a little against the scroll.
+ */
+.ghost {
+	position: absolute;
+	top: 72%;
+	left: 50%;
+	font-size: min(24vw, 42svh);
+	line-height: 1;
+	white-space: nowrap;
+	color: var(--color-paper);
+	opacity: 0.04;
+	pointer-events: none;
+	user-select: none;
+	transform: translate3d(
+		calc(-50% + (0.5 - var(--track)) * 16vw * var(--reach)),
+		calc(-50% + (var(--track) - 0.5) * 24svh * var(--reach)),
+		0
+	);
+}
+
+/* Forced colours paint a plate behind each line; give the lines room so a
+   plate never cuts into the line above. */
+@media (forced-colors: active) {
+	.line {
+		line-height: 1.05;
+	}
+}
+
+/* ------------------------------------------------------------ short screens */
+
+/*
+ * A screen too short to hold the whole statement pinned (a phone on its
+ * side, a laptop zoomed to 200%) doesn't pin it: the track is as tall as the
+ * stage, which grows to fit and scrolls like any other block, so nothing is
+ * ever clipped or held under the edge blurs. The line still brightens as it
+ * passes.
+ */
+@media (max-height: 34rem) {
+	.track {
+		height: auto;
+	}
+
+	.stage {
+		position: relative;
+		min-height: 100svh;
+		height: auto;
+		padding-block: 6rem;
+	}
+}
+
+/*
+ * The narrowest phones: the eyebrow spans the width, so the rings would sit
+ * on it. The orbs frame the statement alone there.
+ */
+@media (width < 22.5rem) {
+	.rings {
+		display: none;
+	}
+}
+
+/* --------------------------------------------------------- reduced motion */
+
+/*
+ * No pin: the track is as tall as the stage, which scrolls like any other
+ * block. The global reduced-motion rules already light every word and hold
+ * every .parallax layer at rest.
+ */
+@media (prefers-reduced-motion: reduce) {
+	.track {
+		height: auto;
+	}
+
+	.stage {
+		position: relative;
+		min-height: 100svh;
+		height: auto;
+		padding-block: 7rem;
+	}
+
+	.ghost {
+		transform: translate3d(-50%, -50%, 0);
+	}
+
+	.stage .onTrack {
+		filter: none;
+	}
+
+	:global(html.js-ready) .signature {
+		opacity: 1;
+		transform: none;
+	}
+}

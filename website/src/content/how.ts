@@ -6,7 +6,7 @@
  */
 import type { ContrastHeading, Detail, Eyebrow, Rich } from "./types";
 
-export type HowDiagramRow = {
+type HowDiagramRow = {
 	/** The account this row stands for. */
 	readonly account: string;
 	readonly store: string;
@@ -14,11 +14,20 @@ export type HowDiagramRow = {
 	readonly window: string;
 };
 
+type HowDiagramColumn = {
+	readonly title: string;
+	readonly item: string;
+};
+
 export type HowDiagram = {
+	/**
+	 * Column headings (wide screens), and what one item of each column is
+	 * called where the columns stack (phones and tablets).
+	 */
 	readonly columns: {
-		readonly stores: string;
-		readonly copies: string;
-		readonly windows: string;
+		readonly stores: HowDiagramColumn;
+		readonly copies: HowDiagramColumn;
+		readonly windows: HowDiagramColumn;
 	};
 	readonly rows: readonly HowDiagramRow[];
 	/** Store → working copy. */
@@ -36,21 +45,20 @@ export type How = {
 	/** Two or three sentences on the mechanism. */
 	readonly mechanism: readonly Rich[];
 	readonly diagram: HowDiagram;
-	readonly detailsTitle: string;
-	readonly detailsLead: string;
+	/** Over the list of details: one sentence in weight contrast. */
+	readonly detailsHeading: ContrastHeading;
 	readonly details: readonly Detail[];
-	/** Labels for the expandable list. */
-	readonly expand: string;
-	readonly collapse: string;
 };
 
 export const how: How = {
 	id: "how-it-works",
 	eyebrow: { index: "05", label: "How it works" },
 	heading: {
+		// A no-break space keeps “Claude Code” on one line (SplitText
+		// splits on every other space).
 		runs: [
 			{ text: "A directory per window,", weight: "heavy" },
-			{ text: "set before Claude Code looks.", weight: "light" }
+			{ text: "set before Claude\u00a0Code looks.", weight: "light" }
 		],
 		plain: "A directory per window, set before Claude Code looks."
 	},
@@ -60,9 +68,12 @@ export const how: How = {
 	],
 	diagram: {
 		columns: {
-			stores: "Account stores",
-			copies: "Per-window working copies",
-			windows: "Windows"
+			stores: { title: "Account stores", item: "Account store" },
+			copies: {
+				title: "Per-window working copies",
+				item: "Working copy"
+			},
+			windows: { title: "Windows", item: "VS Code window" }
 		},
 		rows: [
 			{
@@ -87,8 +98,13 @@ export const how: How = {
 			"~/.claude-personal  ──copy──▶    ~/.claude-windows/c3d4… ◀── window B (CLAUDE_CONFIG_DIR)"
 		].join("\n")
 	},
-	detailsTitle: "The details that make it reliable",
-	detailsLead: "Each one is a bug found and fixed.",
+	detailsHeading: {
+		runs: [
+			{ text: "The details that make it reliable,", weight: "heavy" },
+			{ text: "each one a bug found and fixed.", weight: "light" }
+		],
+		plain: "The details that make it reliable, each one a bug found and fixed."
+	},
 	details: [
 		{
 			title: "Activation order",
@@ -162,7 +178,5 @@ export const how: How = {
 				"The platform requirement is enforced at runtime instead: the inert mode on native Windows."
 			]
 		}
-	],
-	expand: "Read more",
-	collapse: "Show less"
+	]
 };

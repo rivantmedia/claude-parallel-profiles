@@ -12,9 +12,13 @@ import type { NextConfig } from "next";
  */
 const basePath = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").replace(/\/$/, "");
 
+// The Pages workflow passes configure-pages' base_url here. A blank value
+// counts as unset: metadataBase needs an absolute URL, or the build fails.
+const siteUrlEnv = process.env.NEXT_PUBLIC_SITE_URL?.trim();
 const siteUrl = (
-	process.env.NEXT_PUBLIC_SITE_URL ??
-	"https://rivantmedia.github.io/claude-parallel-profiles"
+	siteUrlEnv && siteUrlEnv.length > 0
+		? siteUrlEnv
+		: "https://rivantmedia.github.io/claude-parallel-profiles"
 ).replace(/\/$/, "");
 
 // The extension's own version, so the site never drifts from the release.
@@ -40,7 +44,10 @@ const config: NextConfig = {
 	turbopack: { root: process.cwd() },
 	outputFileTracingRoot: process.cwd(),
 	reactStrictMode: true,
-	poweredByHeader: false
+	poweredByHeader: false,
+	// Next 16.3's dev server otherwise writes AGENTS.md and CLAUDE.md into
+	// website/ on every start.
+	agentRules: false
 };
 
 export default config;

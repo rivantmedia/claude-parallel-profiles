@@ -5,9 +5,17 @@
 import { installCommand, links } from "./links";
 import type { ContrastHeading, Eyebrow, LinkRef, Point, Rich } from "./types";
 
-export type QuickStartStep = Point & {
-	/** Optional command shown under the body, with a copy button. */
-	readonly command?: string;
+type QuickStartStep = Point & {
+	/** Optional link under the body (step 1: the Marketplace listing). */
+	readonly link?: LinkRef;
+	/** Optional command shown with the step, with a copy button. */
+	readonly command?: {
+		/** Shown above the command. */
+		readonly label: string;
+		readonly text: string;
+		/** Accessible name of the copy button. */
+		readonly copyLabel: string;
+	};
 	/** Optional aside under the step. */
 	readonly note?: {
 		readonly text: Rich;
@@ -33,16 +41,25 @@ export const quickstart: QuickStart = {
 	heading: {
 		runs: [
 			{ text: "Four steps.", weight: "heavy" },
-			{ text: "Most are already done.", weight: "light" }
+			{ text: "One is probably done already.", weight: "light" }
 		],
-		plain: "Four steps. Most are already done."
+		plain: "Four steps. One is probably done already."
 	},
 	lead: "There are no settings. Accounts are managed entirely from the status bar.",
 	steps: [
 		{
 			title: "Install",
-			body: "From the VS Code Marketplace (search “Claude Parallel Profiles”), or from a terminal. Install it where Claude Code runs: in a WSL or SSH window, that’s the remote side.",
-			command: installCommand,
+			body: "From the VS Code Marketplace (search “Claude Parallel Profiles”), or from a terminal. Install it where Claude Code runs: in a WSL or SSH window, that’s the remote side, so run the command in that window’s integrated terminal.",
+			link: {
+				label: "Open it in the Marketplace",
+				href: links.marketplace,
+				external: true
+			},
+			command: {
+				label: "Or from a terminal",
+				text: installCommand,
+				copyLabel: "Copy the install command"
+			},
 			note: {
 				text: "Coming from the original Claude Parallel Accounts? Uninstall it first.",
 				link: {
@@ -54,7 +71,7 @@ export const quickstart: QuickStart = {
 		},
 		{
 			title: "You’re probably already signed in",
-			body: "The status bar shows your email, and the account is saved automatically."
+			body: "The status bar shows your email, and the account is saved automatically. The first time, the window reloads once by itself, so it can run that account in a directory of its own."
 		},
 		{
 			title: "Add the second account",
@@ -78,7 +95,7 @@ export const quickstart: QuickStart = {
 			},
 			{
 				title: "Reopening a project",
-				body: "The extension remembers which account each repository used last and restores it automatically. The hover card says so."
+				body: "The extension remembers which account each repository used last and restores it automatically. When the account comes from another window’s memory of the folder rather than this one’s own choice, the hover card says so: “auto-selected: this folder used it last time”."
 			},
 			{
 				title: "One account, one entry",
@@ -86,11 +103,11 @@ export const quickstart: QuickStart = {
 			},
 			{
 				title: "Forgetting an account",
-				body: "Hover the status bar and choose Forget… After you confirm, the account leaves the list, its OAuth token is deleted from every copy on this machine, Claude sessions running on it are interrupted, and any window using it reloads and offers another saved account. History, settings and the data folders stay on disk; signing in again brings the account back. On macOS, if the Keychain doesn’t answer for one of the copies (it’s locked, say), Forget changes nothing and asks you to unlock it and retry. A `claude` process whose environment can’t be read there is left running and reported, never guessed at."
+				body: "Hover the status bar, choose Forget…, pick the account and confirm. The account then leaves the list, its OAuth token is deleted from every copy on this machine, Claude sessions running on it are interrupted, and any window using it reloads and offers another saved account. History, settings and the data folders stay on disk; signing in again brings the account back. On macOS, if the Keychain doesn’t answer for one of the copies (it’s locked, say), Forget changes nothing and asks you to unlock it and retry. A `claude` process whose environment can’t be read there is left running and reported, never guessed at."
 			},
 			{
 				title: "Signing out",
-				body: "Signing out in Claude Code (its account menu, or `/logout`) revokes the token on Anthropic’s side, for every copy of it. When that window next starts, the extension sees the logout and removes the account from the list everywhere, since switching to it could only fail."
+				body: "Signing out in Claude Code (its account menu, or `/logout`) revokes the token on Anthropic’s side, for every copy of it. If the window is still signed out when it next starts, the extension sees the logout and removes the account from the list everywhere, since switching to it could only fail."
 			}
 		]
 	}

@@ -16,6 +16,13 @@ const twMerge = extendTailwindMerge({
 	}
 });
 
+/**
+ * Joins class names and resolves Tailwind conflicts (a later `text-paper`
+ * replaces an earlier `text-mist`), so a caller's className can override a
+ * component's defaults. For server components only: in client code it
+ * would ship tailwind-merge and its class tables to every page (use cx from
+ * ~/lib/cx there).
+ */
 export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
 }

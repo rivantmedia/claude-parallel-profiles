@@ -6,7 +6,7 @@
 import { links } from "./links";
 import type { ContrastHeading, Eyebrow, LinkRef, Point, Rich } from "./types";
 
-export type RequirementRow = {
+type RequirementRow = {
 	readonly requirement: Rich;
 	readonly notes: Rich;
 	readonly link?: LinkRef;
@@ -48,9 +48,9 @@ export const requirements: Requirements = {
 	heading: {
 		runs: [
 			{ text: "Linux and macOS,", weight: "heavy" },
-			{ text: "locally or remote.", weight: "light" }
+			{ text: "local or remote.", weight: "light" }
 		],
-		plain: "Linux and macOS, locally or remote."
+		plain: "Linux and macOS, local or remote."
 	},
 	lead: "It runs wherever Claude Code runs on Linux or macOS: on the desktop, in WSL, over Remote-SSH and in dev containers.",
 	table: {

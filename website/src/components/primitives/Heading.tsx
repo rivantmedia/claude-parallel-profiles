@@ -3,7 +3,7 @@ import { cn } from "~/lib/utils";
 import { SplitText } from "./SplitText";
 
 /** One run of a heading: heavy (extrabold, paper) or light (extralight italic, mist). */
-export type HeadingRun = {
+type HeadingRun = {
 	text: string;
 	weight: "heavy" | "light";
 };
@@ -38,6 +38,7 @@ export function Heading({
 	inline = false,
 	scrub = false,
 	delay = 0,
+	entrance = "view",
 	className
 }: {
 	runs: readonly HeadingRun[];
@@ -50,6 +51,8 @@ export function Heading({
 	scrub?: boolean;
 	/** Delay before the first run, in ms. */
 	delay?: number;
+	/** "load" for a page's first screen (see SplitText). */
+	entrance?: "view" | "load";
 	className?: string;
 }) {
 	return (
@@ -57,7 +60,7 @@ export function Heading({
 			id={id}
 			className={cn("font-display text-paper", SIZE[size], className)}
 		>
-			<span className="sr-only">
+			<span className="sr-only select-none">
 				{runs.map((run) => run.text).join(" ")}
 			</span>
 			{runs.map((run, index) => (
@@ -67,6 +70,7 @@ export function Heading({
 						as="span"
 						presentational
 						scrub={scrub}
+						entrance={entrance}
 						delay={delay + index * 140}
 						className={cn(
 							inline ? "inline" : "block",

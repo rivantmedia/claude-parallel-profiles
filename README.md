@@ -109,7 +109,8 @@ Claude Code does. See the
    Parallel Profiles"). Coming from the original *Claude Parallel Accounts*?
    Read [Switching from the original extension][switching] first.
 2. **You're probably already signed in.** The status bar shows your email, and
-   the account is saved automatically.
+   the account is saved automatically. The first time, the window reloads once
+   to move onto a directory of its own.
 3. **Add the second account.** In Claude Code, sign in as the other account (its
    account menu, or `/login` in the chat). The extension saves it and reloads
    the window onto it. The previous account stays in the list.
@@ -132,7 +133,7 @@ switch when there are other accounts, pick a saved account when the window is
 signed out, save when the account is new.
 
 **Hover** it for the full card: account details, switch and forget actions, and
-quick links to the extension page, its settings and its log.
+quick links to the extension page and its log.
 
 ### Switching
 
@@ -149,7 +150,8 @@ actually switches to it. Other windows are untouched.
 ### Reopening a project
 
 The extension remembers which account each repository used last and restores it
-automatically. The tooltip says so.
+automatically. When a window picks its account up this way, rather than from its
+own last choice, the hover card says it was auto-selected.
 
 ### One account, one entry
 
@@ -158,10 +160,11 @@ email, so you always see one row per account.
 
 ### Forgetting an account
 
-Hover the status bar item and choose *Forget…*. After you confirm, the extension
-removes the account from the list, **deletes its OAuth token from every copy on
-this machine**, interrupts Claude sessions running on it, and reloads any window
-that was using it. That window then offers to switch to another saved account.
+Hover the status bar item, choose *Forget…* and pick the account. After you
+confirm, the extension removes the account from the list, **deletes its OAuth
+token from every copy on this machine**, interrupts Claude sessions running on
+it, and reloads any window that was using it. That window then offers to switch
+to another saved account.
 
 History, settings and the data folders stay on disk. Signing in again brings the
 account back.
@@ -173,8 +176,10 @@ retry. It never reports a sign-out it couldn't complete.
 ### Signing out
 
 Signing out (Claude Code's account menu, or `/logout`) revokes the token on
-Anthropic's side, for every copy of it. The extension notices and removes the
-account from the list everywhere, since switching to it could only fail.
+Anthropic's side, for every copy of it. If the window is still signed out when
+it next starts, the extension removes the account from the list everywhere,
+since switching to it could only fail. It waits for that restart because, while
+the window runs, a logout looks the same as a sign-in still in progress.
 
 ## One conversation history
 
@@ -233,10 +238,11 @@ is a deliberate, load-bearing trade-off: with any lazier activation, the
 variable would be set after Claude Code has already read it, and per-window
 accounts simply wouldn't work.
 
-The cost is kept negligible: a bundle of about 45 KB with zero dependencies. The
-activation path itself only sets the variable and does a handful of file checks;
-everything heavier is deferred. The same start-up read is why switching needs a
-window reload.
+The cost is kept small: a bundle of about 45 KB with zero dependencies. The step
+that has to win the race only makes sure the window's working copy is in place
+and sets the variable (on macOS that includes a Keychain lookup); everything
+heavier runs after it. The same start-up read is why switching needs a window
+reload.
 
 ### A working copy per window
 
@@ -255,8 +261,10 @@ any other directory. So every per-window working copy gets a Keychain item of
 its own, and isolation works exactly as it does with files on Linux.
 
 The extension reads and writes those items the way Claude Code does, through
-`/usr/bin/security`. Values go in hex-encoded over stdin, so a token never shows
-up in a process listing. Claude Code's plaintext fallback file is honoured when
+`/usr/bin/security`. Values go in hex-encoded over stdin, so a token stays out
+of process listings. Only a token too long for one `security -i` line (over
+about 2 KB of JSON) goes through the command's arguments instead, exactly as
+Claude Code handles it. Claude Code's plaintext fallback file is honoured when
 reading.
 
 A locked Keychain counts as "can't tell", never as "signed out", so no account
@@ -320,8 +328,9 @@ policy. Each point can be checked in the [source][repo].
   names Claude Code itself uses. Credentials are only ever *copied between*
   Claude Code's own data directories (or their Keychain items) on this machine.
   They are never parsed, never displayed, never logged and never transmitted.
-- **Conversations are moved, not read.** Shared history relinks the files; the
-  extension does not inspect their contents.
+- **Conversations are moved, not parsed.** Shared history moves and relinks the
+  files. Their contents are never parsed or shown; they are only read when two
+  copies of a file meet, to drop exact duplicates.
 - **Minimal footprint elsewhere.**
   - The workspace folder path is hashed to tell windows apart.
   - `claude auth status` is asked (locally, read-only) to confirm a directory is
@@ -338,15 +347,17 @@ policy. Each point can be checked in the [source][repo].
   account changes. The uninstall hook is guarded the same way.
 - **Uninstalling cleans up after itself.** The directories the extension created
   are deleted and stray OAuth tokens wiped, including their Keychain items on
-  macOS. The one token it leaves is Claude Code's own default login
-  (`~/.claude`, or the `Claude Code-credentials` Keychain item on macOS),
-  exactly where Claude Code keeps it with no extension installed. See
+  macOS. The tokens it leaves are Claude Code's own default login (`~/.claude`,
+  or the `Claude Code-credentials` Keychain item on macOS), exactly where Claude
+  Code keeps it with no extension installed, and the sign-ins of any
+  `~/.claude-<name>` profiles you made yourself. See
   [Uninstalling](#uninstalling).
 
 ## Uninstalling
 
-Removing the extension leaves the machine as if it had never been installed,
-**and leaves Claude Code signed in and working**.
+Removing the extension **leaves Claude Code signed in and working**. Once VS
+Code runs the uninstall step, the machine is left as if the extension had never
+been installed.
 
 **You stay signed in the whole time, not just at the end.** While the extension
 runs, it continuously keeps Claude Code's own default account (`~/.claude`)
@@ -400,8 +411,8 @@ Your other accounts stay signed out afterwards. Sign in to them the normal way.
   to a plaintext `.credentials.json`, and the extension honours that file.
 - **Loads at every VS Code start-up.** It uses the `*` activation event, which
   is required to win the activation race against Claude Code; see
-  [Activation order](#activation-order). The extension is deliberately tiny,
-  so the impact is milliseconds.
+  [Activation order](#activation-order). The extension is deliberately small,
+  and the part that has to run first is kept to a minimum.
 - **API-key users.** This is for OAuth (claude.ai) logins. With
   `ANTHROPIC_API_KEY` you don't need it: set the key per window yourself.
 - **Switching reloads the window.** It is a consequence of Claude Code reading
@@ -427,13 +438,14 @@ both at once**. They register the same commands, and the second one reports the
 conflict.
 
 To switch safely, **uninstall the original first, then fully quit VS Code** (on
-macOS, Cmd+Q), so its uninstall step runs. That step brings your conversation
-history back into `~/.claude` and leaves Claude Code signed in as the account
-you used last. Then install this one: it picks that account up automatically.
+macOS, Cmd+Q) and open it again. VS Code runs the original's uninstall step at
+that next start. The step brings your conversation history back into
+`~/.claude` and leaves Claude Code signed in as the account you used last. Then
+install this one: it picks that account up automatically.
 Sign in to your other accounts once more, and they're saved again.
 
-On macOS the original never did anything, since it only ran on Linux, so there
-is nothing to clean up: just uninstall it.
+On macOS the original has done nothing since its version 1.2.4, which made it
+Linux-only, so there is nothing to clean up: just uninstall it.
 
 Why not the other way around? The original's uninstall step only knows its own
 name. If it runs while this extension is installed, it cleans up directories
@@ -462,6 +474,11 @@ reload the window.
   builds, creates a GitHub Release with the `.vsix`, and publishes to the VS
   Code Marketplace (`VSCE_PAT` secret) and Open VSX (`OVSX_PAT` secret). Either
   publish step is skipped when its secret isn't set.
+- **Website** ([pages.yml](.github/workflows/pages.yml)): the project site in
+  [`website/`](website/README.md) is built and published to GitHub Pages on
+  every push to `main` that touches it, `CHANGELOG.md` or `package.json`. Pull
+  requests get the same checks and build without the deploy. Before the first
+  run, set **Settings → Pages → Source** to **GitHub Actions**.
 
 ### Publishing as Rivant Media
 

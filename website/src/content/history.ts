@@ -23,7 +23,7 @@ export type HistoryDiagram = {
 	readonly ascii: string;
 };
 
-export type ConversationHistory = {
+type ConversationHistory = {
 	readonly id: string;
 	readonly eyebrow: Eyebrow;
 	readonly heading: ContrastHeading;
@@ -64,7 +64,7 @@ export const conversationHistory: ConversationHistory = {
 			path: "~/.claude-shared/projects/<per-repo>/…",
 			note: "one store, a folder per repository"
 		},
-		alt: "Three data directories, Claude Code’s default ~/.claude, an account store and a window’s working copy, each link their projects folder to the same place: ~/.claude-shared/projects, which holds a folder per repository.",
+		alt: "Three data directories, Claude Code’s default ~/.claude, an account store and a window’s working copy, each links its projects folder to the same place: ~/.claude-shared/projects, which holds a folder per repository.",
 		ascii: [
 			"~/.claude/projects                ──┐",
 			"~/.claude-work/projects           ──┼──▶  ~/.claude-shared/projects/<per-repo>/…",

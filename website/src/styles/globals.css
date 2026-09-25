@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* `short:` styles a screen too short for the usual rhythm (a phone on its
+   side). Registered after the built-in variants, so it wins over `md:`. */
+@custom-variant short (@media (max-height: 30rem));
+
 /*
  * Rivant Media's design system (rivant.in, brand v2.1.0), rebuilt without
  * StringTune for a static site. The scroll layer that drives it lives in
@@ -86,6 +90,15 @@
 		background-color: var(--color-void);
 		color-scheme: dark;
 		-webkit-text-size-adjust: 100%;
+		/* Whatever the keyboard focuses scrolls clear of the floating nav
+		   and the bottom edge blur, never under them. */
+		scroll-padding-block: 6rem;
+	}
+
+	/* An anchor jump still lands on a section's own edge: every section
+	   carries its own generous top padding. */
+	main section[id] {
+		scroll-margin-top: -6rem;
 	}
 
 	body {
@@ -171,6 +184,26 @@
 	transform: none;
 }
 
+/* Controls that only work with the page's scripts (copy buttons, the demo's
+   hint and Reset, the motion toggle) stay out of the way until the scroll
+   layer has started and set html[data-motion]. */
+html:not([data-motion]) .needs-js {
+	display: none;
+}
+
+/*
+ * "Pause motion" (see MotionToggle): everything that loops by itself holds
+ * still. Scroll-driven motion is left alone; it only moves when the reader
+ * scrolls. !important so it beats the band's own running-under-the-pointer
+ * rule.
+ */
+html[data-motion-paused] .marquee-track,
+html[data-motion-paused] .live-dot::after,
+html[data-motion-paused] .scroll-cue,
+html[data-motion-paused] .spark-turn {
+	animation-play-state: paused !important;
+}
+
 /* Static film grain. Fixed and pointer-events-none so it never repaints on
    scroll. */
 .grain {
@@ -190,8 +223,13 @@
  * The bottom edge waits for html[data-scrolled] (set by the navbar) so it
  * never softens the hero's calls to action on arrival.
  */
+/*
+ * The bands are sized by the viewport's height as well as its width, so a
+ * short screen (a phone on its side, a small laptop) keeps most of its
+ * height clear: at most 14% at the top and 10% at the bottom.
+ */
 .progressive-blur {
-	--size: 5.5rem;
+	--size: min(5.5rem, 14svh);
 	position: fixed;
 	inset-inline: 0;
 	z-index: 20;
@@ -205,7 +243,7 @@
 }
 
 .progressive-blur[data-side="bottom"] {
-	--size: 4.5rem;
+	--size: min(4.5rem, 10svh);
 	bottom: 0;
 	opacity: 0;
 }
@@ -222,11 +260,11 @@ html[data-scrolled][data-at-end] .progressive-blur[data-side="bottom"] {
 
 @media (min-width: 48rem) {
 	.progressive-blur {
-		--size: 7rem;
+		--size: min(7rem, 14svh);
 	}
 
 	.progressive-blur[data-side="bottom"] {
-		--size: 5.5rem;
+		--size: min(5.5rem, 10svh);
 	}
 }
 
@@ -275,6 +313,25 @@ html[data-scrolled][data-at-end] .progressive-blur[data-side="bottom"] {
 		);
 }
 
+/*
+ * A still layer for brand shapes that meet a section's edge on the void
+ * ground, where a hard crop would draw a line across the page: the shapes
+ * fade in over the section's first --fade instead. Put it on a wrapper that
+ * doesn't move (absolute inset-0 -z-10) around the Parallax layers.
+ */
+.shape-fade-top {
+	-webkit-mask-image: linear-gradient(
+		to bottom,
+		transparent,
+		#000 var(--fade, 10rem)
+	);
+	mask-image: linear-gradient(
+		to bottom,
+		transparent,
+		#000 var(--fade, 10rem)
+	);
+}
+
 /* Depth of field for Parallax's `blur` prop: sharp at rest, softer with
    distance from it. */
 .parallax-dof {
@@ -286,14 +343,12 @@ html[data-scrolled][data-at-end] .progressive-blur[data-side="bottom"] {
 /* ----------------------------------------------------------- text reveals */
 
 /*
- * SplitText renders each word as .reveal-word (and, with by="char", each
- * letter as .reveal-char) with its --word-index / --char-index, and hides
- * them from assistive tech behind one visually hidden copy of the text.
- * The host is .reveal[data-reveal]; the scroll layer adds data-inview once
- * it enters the viewport.
+ * SplitText renders each word as .reveal-word with its --word-index, and
+ * hides them from assistive tech behind one visually hidden copy of the
+ * text. The host is .reveal[data-reveal]; the scroll layer adds data-inview
+ * once it enters the viewport.
  */
-.reveal-word,
-.reveal-char {
+.reveal-word {
 	display: inline-block;
 }
 
@@ -306,23 +361,6 @@ html.js-ready .reveal .reveal-word {
 		transform 1100ms var(--ease-out-expo),
 		filter 1100ms var(--ease-out-expo);
 	transition-delay: calc(var(--delay, 0ms) + var(--word-index, 0) * 55ms);
-}
-
-html.js-ready .reveal.reveal-chars .reveal-word {
-	opacity: 1;
-	transform: none;
-	filter: none;
-}
-
-html.js-ready .reveal.reveal-chars .reveal-char {
-	opacity: 0;
-	transform: translate3d(0, 0.45em, 0) rotate(5deg);
-	filter: blur(6px);
-	transition:
-		opacity 800ms var(--ease-out-expo),
-		transform 1000ms var(--ease-out-expo),
-		filter 1000ms var(--ease-out-expo);
-	transition-delay: calc(var(--delay, 0ms) + var(--char-index, 0) * 18ms);
 }
 
 /*
@@ -340,8 +378,7 @@ html.js-ready .reveal.reveal-long .reveal-word {
 	);
 }
 
-html.js-ready .reveal[data-inview] .reveal-word,
-html.js-ready .reveal[data-inview] .reveal-char {
+html.js-ready .reveal[data-inview] .reveal-word {
 	opacity: 1;
 	transform: none;
 	filter: blur(0);
@@ -349,12 +386,14 @@ html.js-ready .reveal[data-inview] .reveal-char {
 
 /*
  * Scrubbed reveal: words brighten in sequence as the wrapper's --progress
- * advances, so type lights up as it is read. The window (0.18 -> 0.60 of the
- * pass) finishes around the middle of the viewport; override --scrub on the
- * wrapper to move it.
+ * advances, so type lights up as it is read. The window (0.08 -> 0.48 of the
+ * pass) starts as the heading comes up the lower half of the screen and is
+ * done before it reaches the middle; override --scrub on the wrapper to move
+ * it. Unlit words rest at 36% (about 3:1 against the void, the floor for
+ * large text), so the heading is never unreadable, only quieter.
  */
 .reveal-scrub {
-	--scrub: clamp(0, calc((var(--progress, 1) - 0.18) / 0.42), 1);
+	--scrub: clamp(0, calc((var(--progress, 1) - 0.08) / 0.4), 1);
 }
 
 html.js-ready .reveal-scrub .reveal-word {
@@ -369,8 +408,8 @@ html.js-ready .reveal-scrub .reveal-word {
 		),
 		1
 	);
-	opacity: max(0.14, var(--lit));
-	filter: blur(calc((1 - var(--lit)) * 5px));
+	opacity: max(0.36, var(--lit));
+	filter: blur(calc((1 - var(--lit)) * 3px));
 	transition:
 		opacity 160ms linear,
 		filter 160ms linear;
@@ -554,10 +593,12 @@ html.js-ready .rule-draw[data-inview] {
 /* --------------------------------------------------------------- sparks */
 
 /*
- * A slow turn for spark art (SparkTrio's `turn`). Sparks turn, they never
- * bounce or morph. Meant for an SVG group whose local origin is the spark's
- * centre (SparkTrio translates an outer group there), so it turns about 0 0
- * in that group's own user space.
+ * A slow turn for spark art (SparkTrio's `turn`, HeroSparks). Sparks turn,
+ * they never bounce or morph. Put it on an HTML box around one spark: it
+ * turns about the box's centre, and the browser can hand an HTML element's
+ * `rotate` to the compositor (an SVG group's would lay the page out again
+ * every frame). `rotate` is its own property, so it never fights a static
+ * turn inside it or a parallax transform outside it.
  */
 @keyframes spark-turn {
 	to {
@@ -566,8 +607,6 @@ html.js-ready .rule-draw[data-inview] {
 }
 
 .spark-turn {
-	transform-box: view-box;
-	transform-origin: 0 0;
 	animation: spark-turn var(--turn, 90s) linear infinite;
 	animation-direction: var(--turn-direction, normal);
 }
@@ -617,7 +656,6 @@ html.js-ready .rule-draw[data-inview] {
 	}
 
 	html.js-ready .reveal .reveal-word,
-	html.js-ready .reveal .reveal-char,
 	html.js-ready .reveal-scrub .reveal-word,
 	html.js-ready .reveal-up,
 	html.js-ready .rule-draw {
@@ -652,5 +690,23 @@ html.js-ready .rule-draw[data-inview] {
 
 	[data-magnetic] {
 		translate: none !important;
+	}
+
+	/* The edge blurs simply appear and go. */
+	.progressive-blur {
+		transition: none;
+	}
+}
+
+/*
+ * Forced colours (Windows contrast themes) paint an opaque backplate behind
+ * each line of text. Under the display sizes' tight line heights, each
+ * line's plate would cut into the letters of the line above, so the lines
+ * get room.
+ */
+@media (forced-colors: active) {
+	.text-hero,
+	.text-display {
+		line-height: 1.05;
 	}
 }

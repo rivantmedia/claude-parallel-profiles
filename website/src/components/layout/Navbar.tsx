@@ -1,93 +1,45 @@
-"use client";
-
-import { GithubLogoIcon } from "@phosphor-icons/react";
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { ArrowDownIcon, GithubLogoIcon } from "@phosphor-icons/react/ssr";
 import {
 	Container,
+	InternalLink,
 	Lockup,
 	NEW_TAB_HINT,
 	PillButton
 } from "~/components/primitives";
-import { siteConfig } from "~/config/site";
+import { links, site } from "~/content";
 import { cn } from "~/lib/utils";
+import { NavShell } from "./NavShell";
 
-/** The glass every pill takes on once the page has scrolled. */
-const glassClass = "bg-void/55 ring-white/10 backdrop-blur-xl";
+/** The glass every pill takes on once the page has scrolled (see NavShell). */
+const glass =
+	"group-data-scrolled/nav:bg-void/55 group-data-scrolled/nav:ring-white/10 group-data-scrolled/nav:backdrop-blur-xl";
+
+const pill = cn(
+	"nav-pill rounded-full ring-1 ring-transparent transition-[background-color,box-shadow,color] duration-500 ease-spring ring-inset",
+	glass
+);
 
 /**
  * Floating header, as on rivant.in: separate pills that are transparent over
- * the hero and turn to glass once the page scrolls. It slides away while
- * scrolling down and comes back on the way up. Left, the "Rivant for the
- * Community" lockup; right, the in-page links (from lg), GitHub and Install.
- *
- * It also sets html[data-scrolled] once the hero is half gone, which brings
- * in the bottom edge blur, and html[data-at-end] at the foot of the page,
- * which takes it away again (see .progressive-blur).
+ * the hero and turn to glass once the page scrolls. Left, the "Rivant for
+ * the Community" lockup; right, the in-page links (from lg), GitHub and
+ * Install. Rendered on the server; NavShell (the one client part) slides it
+ * away and back and tells the pills when the page has scrolled.
  */
 export function Navbar() {
-	const [hidden, setHidden] = useState(false);
-	const [scrolled, setScrolled] = useState(false);
-
-	useEffect(() => {
-		let last = window.scrollY;
-		let frame = 0;
-		const onScroll = () => {
-			if (frame) return;
-			frame = requestAnimationFrame(() => {
-				frame = 0;
-				const y = window.scrollY;
-				setScrolled(y > 24);
-				const html = document.documentElement;
-				html.toggleAttribute(
-					"data-scrolled",
-					y > window.innerHeight * 0.5
-				);
-				html.toggleAttribute(
-					"data-at-end",
-					y + window.innerHeight >= html.scrollHeight - 48
-				);
-				// A small dead zone, so trackpad jitter doesn't flicker it.
-				if (Math.abs(y - last) > 6) {
-					setHidden(y > last && y > 240);
-					last = y;
-				}
-			});
-		};
-		onScroll();
-		window.addEventListener("scroll", onScroll, { passive: true });
-		return () => {
-			window.removeEventListener("scroll", onScroll);
-			cancelAnimationFrame(frame);
-		};
-	}, []);
-
-	const pill = cn(
-		"nav-pill rounded-full ring-1 transition-[background-color,box-shadow,color] duration-500 ring-inset",
-		scrolled ? glassClass : "ring-transparent"
-	);
-
 	return (
-		// Focus arriving in the header (Tab from the page) brings it back, or
-		// its links would be focused off-screen.
-		<header
-			onFocus={() => setHidden(false)}
-			className={cn(
-				"fixed inset-x-0 top-0 z-40 transition-transform duration-700 ease-spring",
-				hidden && "-translate-y-[140%]"
-			)}
-		>
+		<NavShell>
 			<Container className="flex items-center justify-between gap-3 pt-4 md:pt-6">
-				<Link
+				<InternalLink
 					href="/"
-					aria-label={`${siteConfig.umbrella}: ${siteConfig.name}, home`}
+					aria-label={`${site.umbrella}: ${site.name}, home`}
 					className={cn(
 						pill,
-						"flex min-h-12 items-center py-2.5 pr-5 pl-3.5"
+						"flex min-h-12 min-w-0 items-center py-2.5 pr-5 pl-3.5"
 					)}
 				>
 					<Lockup compact />
-				</Link>
+				</InternalLink>
 
 				<nav
 					aria-label="Main"
@@ -96,23 +48,23 @@ export function Navbar() {
 					<ul
 						className={cn(pill, "hidden items-center px-2 lg:flex")}
 					>
-						{siteConfig.nav.map((link) => (
+						{site.nav.items.map((link) => (
 							<li key={link.href}>
-								<Link
+								<InternalLink
 									href={link.href}
-									className="inline-flex min-h-12 items-center rounded-full px-4 text-sm font-medium text-mist transition-colors duration-300 ease-spring hover:text-paper"
+									className="inline-flex min-h-12 items-center rounded-full px-4 text-sm font-medium text-mist transition-colors duration-300 ease-spring hover:text-paper aria-[current=page]:text-paper"
 								>
 									{link.label}
-								</Link>
+								</InternalLink>
 							</li>
 						))}
 					</ul>
 
 					<a
-						href={siteConfig.links.github}
+						href={links.github}
 						target="_blank"
 						rel="noopener noreferrer"
-						aria-label={`${siteConfig.name} on GitHub ${NEW_TAB_HINT}`}
+						aria-label={`${site.nav.github} ${NEW_TAB_HINT}`}
 						className={cn(
 							pill,
 							"grid size-12 place-items-center text-paper hover:bg-paper hover:text-void hover:ring-paper md:size-14"
@@ -126,18 +78,28 @@ export function Navbar() {
 					</a>
 
 					<PillButton
-						href="/#install"
+						href={site.nav.cta.href}
+						external={site.nav.cta.external}
 						variant="ghost"
+						// It goes to a section further down, not off the site.
+						icon={
+							<ArrowDownIcon
+								weight="light"
+								className="size-4"
+							/>
+						}
 						className={cn(
-							"nav-pill hidden sm:inline-flex",
+							"nav-pill hidden transition-[opacity,visibility,background-color,color,scale,box-shadow] sm:inline-flex",
 							// Keeps its smoke ring; only the ground turns to glass.
-							scrolled && "bg-void/55 backdrop-blur-xl"
+							"group-data-scrolled/nav:bg-void/55 group-data-scrolled/nav:backdrop-blur-xl",
+							// The hero has its own; this one appears once it scrolls away.
+							"group-data-cta-hidden/nav:invisible group-data-cta-hidden/nav:opacity-0"
 						)}
 					>
-						Install
+						{site.nav.cta.label}
 					</PillButton>
 				</nav>
 			</Container>
-		</header>
+		</NavShell>
 	);
 }

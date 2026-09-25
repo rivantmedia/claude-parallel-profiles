@@ -17,7 +17,11 @@ export function Eyebrow({
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center gap-2.5 rounded-full px-3.5 py-2 text-eyebrow font-semibold text-mist uppercase ring-1 ring-smoke/70 ring-inset",
+				// A label that wraps (narrow phones) gets a real line gap; the
+				// padding gives back what the taller line takes, so a one-line
+				// pill keeps its height. Tracking tightens on the narrowest
+				// phones so the longest labels stay on one line.
+				"inline-flex items-center gap-2.5 rounded-full px-3.5 py-[calc(0.5rem_-_0.175em)] text-eyebrow leading-[1.35] font-semibold text-mist uppercase ring-1 ring-smoke/70 ring-inset max-[22.5rem]:tracking-[0.14em]",
 				className
 			)}
 		>

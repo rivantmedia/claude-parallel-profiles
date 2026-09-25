@@ -17,6 +17,8 @@ export type Idea = {
 	readonly points: readonly Point[];
 	/** It works with Claude Code, not instead of it. */
 	readonly companion: {
+		/** The one-line point, set a shade brighter than the rest. */
+		readonly lead: string;
 		readonly text: Rich;
 		readonly link: LinkRef;
 	};
@@ -68,7 +70,8 @@ export const idea: Idea = {
 		}
 	],
 	companion: {
-		text: "It’s a companion, not a replacement. The official Claude Code extension must be installed; this one only controls which account each window uses.",
+		lead: "It’s a companion, not a replacement.",
+		text: "The official Claude Code extension must be installed; this one only controls which account each window uses.",
 		link: {
 			label: "Claude Code on the Marketplace",
 			href: links.claudeCode,

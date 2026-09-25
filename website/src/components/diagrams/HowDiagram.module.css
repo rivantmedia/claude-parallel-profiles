@@ -1,0 +1,103 @@
+/*
+ * Layout for HowDiagram. Phones: one row after another, each on end.
+ * Tablets and small laptops: the two rows side by side. Wide (xl): one row
+ * per account across the three columns, under their headings.
+ */
+.layout {
+	margin-inline: auto;
+	max-width: 34rem;
+}
+
+.header {
+	display: none;
+}
+
+.rows {
+	display: grid;
+	gap: 2.75rem;
+}
+
+.row {
+	display: flex;
+	min-width: 0;
+	flex-direction: column;
+}
+
+/*
+ * On end: the line runs down from under the chip's icon (1rem padding plus
+ * half the 1rem icon, less half the 0.75rem-wide line), with its label
+ * beside it. The label comes first in the source, for the wide layout.
+ */
+.edge {
+	display: flex;
+	height: 3.5rem;
+	flex-direction: row-reverse;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.625rem;
+	padding-left: 1.125rem;
+}
+
+@media (width >= 48rem) {
+	.layout {
+		max-width: 44rem;
+	}
+
+	.rows {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 2rem;
+	}
+}
+
+/*
+ * Wide: the widths of the edge columns are the Line lengths in HowDiagram.
+ * From xl only: at lg the store column is too narrow for
+ * "~/.claude-personal" on one line, so lg keeps the tablet layout.
+ */
+@media (width >= 80rem) {
+	.layout {
+		max-width: 70rem;
+	}
+
+	.header,
+	.row {
+		display: grid;
+		grid-template-columns:
+			minmax(0, 1fr) 6.5rem minmax(0, 1.25fr) 9.5rem
+			minmax(0, 0.85fr);
+		align-items: center;
+	}
+
+	.header {
+		margin-bottom: 1.5rem;
+		color: var(--color-ash);
+		font-size: var(--text-eyebrow);
+		font-weight: 600;
+		letter-spacing: var(--text-eyebrow--letter-spacing);
+		line-height: 1.5;
+		text-transform: uppercase;
+	}
+
+	.rows {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 1.75rem;
+	}
+
+	/* The line on the row's centre line, its label just above it. */
+	.edge {
+		position: relative;
+		height: 0.75rem;
+		flex-direction: row;
+		justify-content: center;
+		padding: 0;
+	}
+
+	.edge > span:first-child {
+		position: absolute;
+		bottom: 100%;
+		left: 50%;
+		margin-bottom: 0.3rem;
+		transform: translateX(-50%);
+		white-space: nowrap;
+	}
+}

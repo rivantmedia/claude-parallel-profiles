@@ -1,0 +1,8 @@
+/* The box hugs the art at the icon's proportions; the sparks are placed in
+   it by percentage (see trioPlacement in Spark.tsx). Their slow turn is the
+   global .spark-turn. */
+.box {
+	position: relative;
+	aspect-ratio: 188 / 164;
+	pointer-events: none;
+}

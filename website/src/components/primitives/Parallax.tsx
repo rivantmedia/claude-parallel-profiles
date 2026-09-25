@@ -23,6 +23,12 @@ type ParallaxProps = React.HTMLAttributes<HTMLElement> & {
  * Scroll parallax driven by the scroll layer's --progress (see `.parallax` in
  * globals.css). The layer rests where it is placed at the middle of its pass
  * and drifts either side, so place it where it should be seen.
+ *
+ * Two elements: the outer one is placed (className, style, and the rest of
+ * the props) and carries data-progress, and it never moves, so the scroll
+ * layer measures where the layer really is in the page; the inner one
+ * inherits --progress and moves. Measuring the moving element would feed its
+ * own transform back into its progress, shortening the travel.
  */
 export function Parallax({
 	depth = 120,
@@ -31,24 +37,30 @@ export function Parallax({
 	blur,
 	as: Tag = "div",
 	className,
-	style,
+	children,
 	...props
 }: ParallaxProps) {
+	const Inner = Tag === "span" ? "span" : "div";
 	return (
 		<Tag
 			data-progress=""
-			className={cn("parallax", blur && "parallax-dof", className)}
-			style={
-				{
-					"--depth": `${depth}px`,
-					"--rotate": `${rotate}deg`,
-					"--scale-from": scale?.[0] ?? 1,
-					"--scale-to": scale?.[1] ?? 1,
-					...(blur ? { "--dof": `${blur}px` } : {}),
-					...style
-				} as React.CSSProperties
-			}
+			className={className}
 			{...props}
-		/>
+		>
+			<Inner
+				className={cn("parallax block", blur && "parallax-dof")}
+				style={
+					{
+						"--depth": `${depth}px`,
+						"--rotate": `${rotate}deg`,
+						"--scale-from": scale?.[0] ?? 1,
+						"--scale-to": scale?.[1] ?? 1,
+						...(blur ? { "--dof": `${blur}px` } : {})
+					} as React.CSSProperties
+				}
+			>
+				{children}
+			</Inner>
+		</Tag>
 	);
 }

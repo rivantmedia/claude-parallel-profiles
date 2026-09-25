@@ -1,0 +1,183 @@
+/*
+ * The "See it" mock: two VS Code windows drawn in the brand's greys. Motion
+ * here is interaction (ease-spring, short) and small loops (a spinner, a
+ * caret); every one of them stops under reduced motion, where the mock
+ * changes state instantly.
+ */
+
+/* ------------------------------------------------------------------ shell */
+
+/*
+ * A framed product shot: graphite shell, slate hairline, a faint top
+ * highlight like the carbon band's, and a long soft shadow into the band.
+ */
+.window {
+	box-shadow:
+		0 0 0 1px var(--color-slate),
+		inset 0 1px 0 0 rgb(255 255 255 / 0.05),
+		0 2.5rem 5rem -2rem rgb(0 0 0 / 0.85);
+}
+
+/* The body comes back like a reloaded window after a switch. */
+.boot {
+	animation: boot 600ms var(--ease-out-expo) both;
+}
+
+@keyframes boot {
+	from {
+		opacity: 0;
+	}
+}
+
+/* ------------------------------------------------------------- status bar */
+
+/* The item's own focus ring sits inside the window, which clips outside. */
+.item:focus-visible {
+	outline: 2px solid var(--color-paper);
+	outline-offset: -2px;
+}
+
+/* Two live dots on screen at once: offset their pulses so they don't beat
+   together. */
+.status .dot {
+	width: 0.375rem;
+	height: 0.375rem;
+}
+
+.window:nth-child(2) .status .dot::after {
+	animation-delay: -1.2s;
+}
+
+/* ----------------------------------------------------------- pop-ups */
+
+/* Quick pick: drops in from the title bar, as VS Code's does. */
+.quickPick {
+	box-shadow: 0 1.5rem 3rem -0.75rem rgb(0 0 0 / 0.9);
+	animation: drop 360ms var(--ease-spring) both;
+}
+
+@keyframes drop {
+	from {
+		opacity: 0;
+		transform: translate3d(0, -0.5rem, 0);
+	}
+}
+
+/* Hover card and notification: rise from the status bar. */
+.pop {
+	box-shadow: 0 1.25rem 2.5rem -0.75rem rgb(0 0 0 / 0.9);
+	animation: rise 360ms var(--ease-spring) both;
+}
+
+@keyframes rise {
+	from {
+		opacity: 0;
+		transform: translate3d(0, 0.375rem, 0);
+	}
+}
+
+.reload {
+	animation: fade 200ms linear both;
+}
+
+@keyframes fade {
+	from {
+		opacity: 0;
+	}
+}
+
+@keyframes spin {
+	to {
+		rotate: 360deg;
+	}
+}
+
+.spin {
+	animation: spin 900ms linear infinite;
+}
+
+/* A text caret, blinking like an editor's. */
+@keyframes blink {
+	50% {
+		opacity: 0;
+	}
+}
+
+.caret {
+	animation: blink 1.1s steps(1) infinite;
+}
+
+/* ------------------------------------------------------------------ steps */
+
+/*
+ * The steps under the mock light up as the visitor tries it: the active
+ * one's hairline draws in paper over the slate, its words brighten.
+ */
+.stepLine {
+	transform: scaleX(0);
+	transform-origin: left center;
+	transition: transform 900ms var(--ease-out-expo);
+}
+
+.step[data-active] .stepLine {
+	transform: none;
+}
+
+.stepNum,
+.stepTitle,
+.stepText {
+	transition: color 400ms var(--ease-spring);
+}
+
+.stepNum {
+	color: var(--color-ash);
+}
+
+.stepTitle {
+	color: var(--color-mist);
+}
+
+.stepText {
+	color: var(--color-ash);
+}
+
+.step[data-active] .stepNum,
+.step[data-active] .stepTitle {
+	color: var(--color-paper);
+}
+
+.step[data-active] .stepText {
+	color: var(--color-bone);
+}
+
+/*
+ * Forced colours (Windows contrast themes) drop the active option's tint and
+ * ring, and the list itself shows no focus (it uses aria-activedescendant),
+ * so the option Enter will choose gets a system Highlight outline.
+ */
+@media (forced-colors: active) {
+	.option[aria-selected="true"] {
+		outline: 2px solid Highlight;
+		outline-offset: -2px;
+	}
+}
+
+/* ---------------------------------------------------------- reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+	.boot,
+	.quickPick,
+	.pop,
+	.reload,
+	.spin,
+	.caret {
+		animation: none !important;
+	}
+
+	.stepLine,
+	.stepNum,
+	.stepTitle,
+	.stepText {
+		transition: none !important;
+	}
+}

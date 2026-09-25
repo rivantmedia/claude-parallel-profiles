@@ -1,0 +1,196 @@
+/*
+ * Rivant prose for release notes: Inter in bone at a comfortable measure,
+ * sections introduced by small tracked labels over a hairline, list items
+ * marked by short dashes, emphasis in paper. The Markdown comes from
+ * CHANGELOG.md, so every rule here is by element, not by class.
+ */
+.prose {
+	max-width: 66ch;
+	font-size: 1rem;
+	line-height: 1.75;
+	color: var(--color-bone);
+}
+
+@media (width >= 48rem) {
+	.prose {
+		font-size: 1.0625rem;
+	}
+}
+
+/* ----------------------------------------------------------------- rhythm */
+
+.prose > * + * {
+	margin-top: 1.25rem;
+}
+
+.prose > .label + * {
+	margin-top: 1.75rem;
+}
+
+.prose > * + .label {
+	margin-top: 3.5rem;
+}
+
+/* ------------------------------------------------------------------ labels */
+
+/* "Added", "Changed", "Fixed": an eyebrow, with a slate rule running on to
+   the column's edge. */
+.label {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	font-family: var(--font-sans);
+	font-size: var(--text-eyebrow);
+	font-weight: 600;
+	line-height: 1;
+	letter-spacing: var(--text-eyebrow--letter-spacing);
+	text-transform: uppercase;
+	color: var(--color-ash);
+}
+
+.label::after {
+	content: "";
+	flex: 1;
+	height: 1px;
+	background-color: var(--color-slate);
+}
+
+.minor {
+	font-family: var(--font-display);
+	font-size: 1.125rem;
+	font-weight: 500;
+	line-height: 1.4;
+	color: var(--color-paper);
+}
+
+/* ------------------------------------------------------------------- text */
+
+.prose p {
+	text-wrap: pretty;
+}
+
+.prose strong {
+	font-weight: 600;
+	color: var(--color-paper);
+}
+
+.prose em {
+	font-style: italic;
+}
+
+.prose a {
+	font-weight: 500;
+	color: var(--color-paper);
+	text-decoration-line: underline;
+	text-decoration-color: var(--color-smoke);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.25em;
+	transition: text-decoration-color 300ms var(--ease-out-expo);
+}
+
+.prose a:hover {
+	text-decoration-color: var(--color-paper);
+}
+
+/* ------------------------------------------------------------------ lists */
+
+.prose ul,
+.prose ol {
+	display: grid;
+	gap: 1rem;
+	padding: 0;
+	list-style: none;
+}
+
+.prose li {
+	position: relative;
+	padding-left: 1.75rem;
+}
+
+/* A short dash on the first line's centre (half the 1.75 line height). */
+.prose ul > li::before {
+	content: "";
+	position: absolute;
+	top: 0.875em;
+	left: 0;
+	width: 0.875rem;
+	height: 1px;
+	background-color: var(--color-slate);
+}
+
+.prose ol {
+	counter-reset: item;
+}
+
+.prose ol > li {
+	counter-increment: item;
+}
+
+.prose ol > li::before {
+	content: counter(item, decimal-leading-zero);
+	position: absolute;
+	left: 0;
+	font-family: var(--font-display);
+	font-size: 0.8125em;
+	font-style: italic;
+	font-weight: 200;
+	font-variant-numeric: tabular-nums;
+	color: var(--color-ash);
+}
+
+/* Paragraphs and nested lists inside an item sit closer than top-level
+   blocks, and nested items closer still. */
+.prose li > * + * {
+	margin-top: 0.75rem;
+}
+
+.prose li ul,
+.prose li ol {
+	gap: 0.5rem;
+}
+
+/* ------------------------------------------------------------------ blocks */
+
+.prose pre {
+	overflow-x: auto;
+	border-radius: 1rem;
+	background-color: var(--color-graphite);
+	box-shadow: inset 0 0 0 1px var(--color-slate);
+	padding: 1rem 1.25rem;
+	font-size: 0.875rem;
+	line-height: 1.7;
+}
+
+.prose blockquote {
+	border-left: 1px solid var(--color-smoke);
+	padding-left: 1.25rem;
+	color: var(--color-mist);
+}
+
+.prose hr {
+	border: 0;
+	border-top: 1px solid var(--color-slate);
+}
+
+.table {
+	overflow-x: auto;
+}
+
+.table table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9375rem;
+}
+
+.table th,
+.table td {
+	border-bottom: 1px solid var(--color-slate);
+	padding: 0.75rem 1rem 0.75rem 0;
+	text-align: left;
+	vertical-align: top;
+}
+
+.table th {
+	font-weight: 600;
+	color: var(--color-paper);
+}

@@ -1,0 +1,110 @@
+/*
+ * The diagrams' shared parts (see Diagram.tsx): a carbon plate, graphite
+ * chips that hold real text, and an SVG layer of connectors that draw in.
+ *
+ * A "stage" is any element with data-reveal and the .stage class; the scroll
+ * layer (Motion.tsx) marks it data-inview once it enters the viewport, and
+ * everything inside plays in on its own --delay: chips rise and sharpen,
+ * connector strokes draw from their source (stroke-dashoffset over a
+ * pathLength of 1), then the arrowheads and edge labels settle. Hidden
+ * states apply only under html.js-ready and without a reduced-motion
+ * preference, so without JavaScript, or with reduced motion, the diagram is
+ * simply there.
+ */
+
+/* ----------------------------------------------------------------- plate */
+
+/*
+ * Frosted carbon: a shape drifting behind the section glows through it,
+ * softly, instead of being cut off by an opaque slab. Edge labels sit on
+ * solid carbon, over the lines, which is what the plate reads as.
+ */
+.frame {
+	--plate: var(--color-carbon);
+	background-color: color-mix(in srgb, var(--color-carbon) 74%, transparent);
+	-webkit-backdrop-filter: blur(28px);
+	backdrop-filter: blur(28px);
+}
+
+/* ----------------------------------------------------------------- chips */
+
+.chip {
+	position: relative;
+}
+
+/* Mono paths wrap only when they must (a narrow phone), after a slash
+   (see PathText), and the chip grows about its centre. */
+.path {
+	overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------ connectors */
+
+.svg {
+	overflow: visible;
+	fill: none;
+}
+
+.stroke {
+	fill: none;
+	stroke: var(--color-ash);
+	stroke-width: 1.25;
+	/* Butt caps: a zero-length dash with round caps would leave a dot at
+	   the source before the line draws. */
+	stroke-linecap: butt;
+	stroke-linejoin: round;
+}
+
+.head {
+	fill: none;
+	stroke: var(--color-mist);
+	stroke-width: 1.25;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+/* A label on a line: the plate's ground behind it breaks the line. */
+.label {
+	position: relative;
+	display: inline-block;
+	background-color: var(--plate);
+}
+
+/* --------------------------------------------------------------- entrance */
+
+@media (prefers-reduced-motion: no-preference) {
+	:global(html.js-ready) .stage .chip {
+		transition:
+			opacity 900ms var(--ease-out-expo),
+			transform 1100ms var(--ease-out-expo),
+			filter 1100ms var(--ease-out-expo);
+		transition-delay: var(--delay, 0ms);
+	}
+
+	:global(html.js-ready) .stage:not([data-inview]) .chip {
+		opacity: 0;
+		transform: translate3d(0, 0.75rem, 0);
+		filter: blur(6px);
+	}
+
+	:global(html.js-ready) .stage .stroke {
+		stroke-dasharray: 1;
+		transition: stroke-dashoffset 1400ms var(--ease-out-expo);
+		transition-delay: var(--delay, 0ms);
+	}
+
+	:global(html.js-ready) .stage:not([data-inview]) .stroke {
+		stroke-dashoffset: 1;
+	}
+
+	:global(html.js-ready) .stage .head,
+	:global(html.js-ready) .stage .label {
+		transition: opacity 700ms var(--ease-out-expo);
+		transition-delay: var(--delay, 0ms);
+	}
+
+	:global(html.js-ready) .stage:not([data-inview]) .head,
+	:global(html.js-ready) .stage:not([data-inview]) .label {
+		opacity: 0;
+	}
+}

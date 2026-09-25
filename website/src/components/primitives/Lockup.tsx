@@ -1,4 +1,4 @@
-import { siteConfig } from "~/config/site";
+import { site } from "~/content";
 import { cn } from "~/lib/utils";
 import { Logo } from "./Logo";
 
@@ -8,8 +8,11 @@ import { Logo } from "./Logo";
  * in extralight italic mist, the brand's weight contrast. Presentational:
  * the link or heading around it carries the accessible name.
  *
- * `compact` lets the tail drop below sm, where the nav has no room for it;
- * the logomark and RIVANT always stay.
+ * `compact` lets the tail drop below 25rem (400px), where the nav has no
+ * room for it beside the GitHub pill; the logomark and RIVANT always stay.
+ * The space between the two words is real text (the gap only spaces them),
+ * so the visible text reads "RIVANT for the Community", matching the link's
+ * accessible name.
  */
 export function Lockup({
 	compact = false,
@@ -26,15 +29,15 @@ export function Lockup({
 			<Logo className="h-[22px] w-[34px] shrink-0" />
 			<span className="flex items-baseline gap-[0.55em] font-display text-[0.8rem] whitespace-nowrap">
 				<span className="font-bold tracking-[0.22em] text-paper">
-					{siteConfig.rivant.shortName}
-				</span>
+					{site.lockup.wordmark}
+				</span>{" "}
 				<span
 					className={cn(
 						"text-[0.95rem] font-extralight tracking-[0.01em] text-mist italic",
-						compact && "max-[23rem]:hidden"
+						compact && "max-[25rem]:hidden"
 					)}
 				>
-					for the Community
+					{site.lockup.tail}
 				</span>
 			</span>
 		</span>

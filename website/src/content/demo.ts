@@ -4,10 +4,27 @@
  * The status bar, hover card and quick pick strings are the extension’s real
  * ones, verbatim, straight apostrophes included (src/statusBar.ts,
  * src/setupWizard.ts, package.json). `$(name)` is VS Code’s codicon syntax,
- * which the mock draws as the matching icon. The projects and email
- * addresses are made-up examples.
+ * which the mock draws as the matching icon. The projects, files, code,
+ * chat exchanges and email addresses are made-up examples: they only give
+ * each window something to show, and say nothing about the extension.
  */
 import type { ContrastHeading, Eyebrow, Rich } from "./types";
+
+/** One row of a window’s file explorer. */
+type DemoFile = {
+	readonly name: string;
+	/** Nesting level, 0 at the project root. */
+	readonly depth: number;
+	readonly kind: "folder" | "file";
+	/** The file open in the editor. */
+	readonly active?: boolean;
+};
+
+/** One turn of the example exchange in a window’s Claude Code panel. */
+type DemoMessage = {
+	readonly from: "you" | "claude";
+	readonly text: Rich;
+};
 
 export type DemoWindow = {
 	readonly key: "a" | "b";
@@ -17,9 +34,22 @@ export type DemoWindow = {
 	readonly project: string;
 	/** The account it starts on. */
 	readonly account: string;
+	/** The file open in the editor, and its language as the status bar names it. */
+	readonly file: string;
+	readonly language: string;
+	readonly branch: string;
+	/** Where the cursor sits, for the status bar. */
+	readonly cursor: string;
+	readonly tree: readonly DemoFile[];
+	/** The editor’s lines, drawn in greys by a tiny highlighter. */
+	readonly code: readonly string[];
+	/** The conversation in its Claude Code panel. After a switch it is still in the shared history. */
+	readonly chat: readonly DemoMessage[];
+	/** What a screen reader hears about the window as a whole. */
+	readonly summary: string;
 };
 
-export type DemoStep = {
+type DemoStep = {
 	readonly title: string;
 	readonly caption: Rich;
 };
@@ -29,13 +59,14 @@ export type Demo = {
 	readonly eyebrow: Eyebrow;
 	readonly heading: ContrastHeading;
 	readonly lead: Rich;
-	/** Shown on the mock itself. */
-	readonly illustration: string;
+	/** The label on the mock, and the note under it. */
+	readonly illustration: {
+		readonly label: string;
+		readonly note: string;
+	};
 	readonly windows: readonly [DemoWindow, DemoWindow];
 	/** The saved accounts, in list order. */
 	readonly accounts: readonly string[];
-	/** Title-bar suffix, as VS Code shows it. */
-	readonly appName: string;
 	/** The Claude Code panel in the mock: its title only, nothing invented. */
 	readonly panel: {
 		readonly title: string;
@@ -51,6 +82,7 @@ export type Demo = {
 		/** Accessible name of the item (its `name` in VS Code). */
 		readonly itemName: string;
 		/** What each state means, for a legend under the mock. */
+		readonly legendTitle: string;
 		readonly legend: readonly {
 			readonly text: string;
 			readonly meaning: Rich;
@@ -91,14 +123,28 @@ export type Demo = {
 	};
 	/** Picking the account the window already runs. `<email>` is replaced. */
 	readonly alreadyCurrent: string;
+	/** The steps, lit one at a time as the visitor tries the mock. */
+	readonly stepsTitle: string;
 	readonly steps: readonly DemoStep[];
 	readonly controls: {
-		readonly next: string;
-		readonly back: string;
-		readonly replay: string;
+		/** Beside the label: what to try. */
+		readonly hint: string;
+		/** In place of the hint when scripts are off: the mock is a picture then. */
+		readonly noScript: string;
+		readonly reset: string;
 		/** `<window>` is replaced with a window’s label. */
 		readonly switchWindow: string;
-		readonly step: string;
+	};
+	/**
+	 * What the polite live region says. `<window>`, `<other>`, `<email>` and
+	 * `<otherEmail>` are replaced.
+	 */
+	readonly narration: {
+		readonly opened: string;
+		readonly closed: string;
+		readonly reloading: string;
+		readonly switched: string;
+		readonly reset: string;
 	};
 };
 
@@ -113,24 +159,102 @@ export const demo: Demo = {
 		plain: "Two windows, two accounts, at once."
 	},
 	lead: "Click a status bar to switch that window’s account. The other window keeps running its own.",
-	illustration:
-		"Illustration. The status bar and menu text match the extension; the projects and accounts are examples.",
+	illustration: {
+		label: "Illustration",
+		note: "The status bar and menu text match the extension; the projects and accounts are examples."
+	},
 	windows: [
 		{
 			key: "a",
 			label: "Window A",
 			project: "client-dashboard",
-			account: "you@work.com"
+			account: "you@work.com",
+			file: "RevenueChart.tsx",
+			language: "TypeScript JSX",
+			branch: "main",
+			cursor: "Ln 6, Col 12",
+			tree: [
+				{ name: "src", depth: 0, kind: "folder" },
+				{ name: "charts", depth: 1, kind: "folder" },
+				{ name: "Chart.tsx", depth: 2, kind: "file" },
+				{
+					name: "RevenueChart.tsx",
+					depth: 2,
+					kind: "file",
+					active: true
+				},
+				{ name: "useRevenue.ts", depth: 2, kind: "file" },
+				{ name: "App.tsx", depth: 1, kind: "file" },
+				{ name: "package.json", depth: 0, kind: "file" },
+				{ name: "README.md", depth: 0, kind: "file" }
+			],
+			code: [
+				'import { Chart } from "./Chart";',
+				"",
+				"export function RevenueChart() {",
+				"  const q = useRevenue();",
+				"  if (q.isPending) {",
+				"    return <ChartSkeleton />;",
+				"  }",
+				"  return <Chart data={q.data} />;",
+				"}"
+			],
+			chat: [
+				{
+					from: "you",
+					text: "The revenue chart flashes empty on first load. Why?"
+				},
+				{
+					from: "claude",
+					text: "It renders before the data arrives. I added a skeleton while `q.isPending` is true."
+				}
+			],
+			summary:
+				"Window A has the project client-dashboard open, with a conversation about its revenue chart in the Claude Code panel."
 		},
 		{
 			key: "b",
 			label: "Window B",
 			project: "dotfiles",
-			account: "you@personal.dev"
+			account: "you@personal.dev",
+			file: ".zshrc",
+			language: "Shell Script",
+			branch: "main",
+			cursor: "Ln 5, Col 3",
+			tree: [
+				{ name: "git", depth: 0, kind: "folder" },
+				{ name: ".gitconfig", depth: 1, kind: "file" },
+				{ name: "nvim", depth: 0, kind: "folder" },
+				{ name: "init.lua", depth: 1, kind: "file" },
+				{ name: ".zshrc", depth: 0, kind: "file", active: true },
+				{ name: "Brewfile", depth: 0, kind: "file" },
+				{ name: "install.sh", depth: 0, kind: "file" }
+			],
+			code: [
+				"# Node follows the folder",
+				"autoload -U add-zsh-hook",
+				"",
+				"load-nvmrc() {",
+				"  [[ -f .nvmrc ]] && nvm use",
+				"}",
+				"add-zsh-hook chpwd load-nvmrc",
+				"load-nvmrc"
+			],
+			chat: [
+				{
+					from: "you",
+					text: "Switch Node versions per project, automatically."
+				},
+				{
+					from: "claude",
+					text: "Done. A `chpwd` hook runs `nvm use` in any folder with an `.nvmrc`."
+				}
+			],
+			summary:
+				"Window B has the project dotfiles open, with a conversation about its shell setup in the Claude Code panel."
 		}
 	],
 	accounts: ["you@work.com", "you@personal.dev"],
-	appName: "Visual Studio Code",
 	panel: {
 		title: "Claude Code"
 	},
@@ -140,6 +264,7 @@ export const demo: Demo = {
 		signedOut: "$(account) Claude: sign in",
 		confirming: "$(account) Claude $(sync~spin)",
 		itemName: "Claude Account",
+		legendTitle: "What the status bar says",
 		legend: [
 			{
 				text: "$(account) you@work.com",
@@ -187,6 +312,7 @@ export const demo: Demo = {
 			"Claude Accounts: Signed in as <email> — the window was reloaded so Claude Code fully switches to it."
 	},
 	alreadyCurrent: "<email> is already this window's account.",
+	stepsTitle: "What you’re seeing",
 	steps: [
 		{
 			title: "Two windows, two accounts",
@@ -215,10 +341,18 @@ export const demo: Demo = {
 		}
 	],
 	controls: {
-		next: "Next",
-		back: "Back",
-		replay: "Replay",
-		switchWindow: "Switch <window>",
-		step: "Step"
+		hint: "Click either status bar to switch that window’s account.",
+		noScript:
+			"With JavaScript on, clicking a status bar switches that window’s account.",
+		reset: "Reset",
+		switchWindow: "Switch <window>"
+	},
+	narration: {
+		opened: "Switch Account for This Window, in <window>. Use the arrow keys and Enter to choose, or Escape to close.",
+		closed: "Closed. <window> still runs <email>.",
+		reloading: "<window> is reloading onto <email>.",
+		switched:
+			"<window> reloaded and now runs <email>. Its conversations are still in the history, ready to resume. <other> still runs <otherEmail>.",
+		reset: "Reset. <window> runs <email> and <other> runs <otherEmail>."
 	}
 };

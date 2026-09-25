@@ -7,6 +7,8 @@
  *   npm run preview                                   build, then serve at /
  *   NEXT_PUBLIC_BASE_PATH=/claude-parallel-profiles npm run preview
  *   PORT=4000 npm start                               serve the existing out/
+ *
+ * `npm start` must be given the same NEXT_PUBLIC_BASE_PATH the build had.
  */
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
@@ -63,6 +65,26 @@ const notFound = async (res) => {
 };
 
 http.createServer(async (req, res) => {
+	try {
+		await handle(req, res);
+	} catch (error) {
+		// A malformed address (a bad %-escape) is the client's mistake; answer
+		// it rather than let the rejection take the server down.
+		if (!res.headersSent)
+			res.writeHead(error instanceof URIError ? 400 : 500, {
+				"Content-Type": "text/plain"
+			});
+		res.end(error instanceof URIError ? "Bad request" : "Server error");
+	}
+}).listen(port, () => {
+	console.log(`Serving out/ at http://localhost:${port}${base}/`);
+});
+
+/**
+ * @param {import("node:http").IncomingMessage} req
+ * @param {import("node:http").ServerResponse} res
+ */
+async function handle(req, res) {
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const pathname = decodeURIComponent(url.pathname);
 
@@ -73,7 +95,9 @@ http.createServer(async (req, res) => {
 	if (!pathname.startsWith(`${base}/`)) return notFound(res);
 
 	const file = path.join(root, pathname.slice(base.length));
-	if (!file.startsWith(root)) return notFound(res);
+	// Inside out/ itself, not merely a sibling whose name starts with "out".
+	if (file !== root && !file.startsWith(root + path.sep))
+		return notFound(res);
 
 	const found = await kind(file);
 	if (found === "file") return send(res, file);
@@ -86,6 +110,4 @@ http.createServer(async (req, res) => {
 		if ((await kind(index)) === "file") return send(res, index);
 	}
 	return notFound(res);
-}).listen(port, () => {
-	console.log(`Serving out/ at http://localhost:${port}${base}/`);
-});
+}

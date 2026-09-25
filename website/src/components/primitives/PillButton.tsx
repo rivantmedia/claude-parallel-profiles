@@ -1,6 +1,6 @@
 import { ArrowUpRightIcon } from "@phosphor-icons/react/ssr";
-import Link from "next/link";
 import { cn } from "~/lib/utils";
+import { InternalLink } from "./InternalLink";
 
 type Variant = "solid" | "ghost";
 
@@ -45,8 +45,10 @@ export const NEW_TAB_HINT = "(opens in a new tab)";
 /**
  * Primary call to action. The arrow sits in its own circular well
  * ("button-in-button") and nudges up-right on hover; the whole pill presses
- * down slightly when clicked. Internal hrefs go through next/link (which adds
- * the base path); external ones open in a new tab.
+ * down slightly when clicked. Internal hrefs go through InternalLink (next/link
+ * for another page, a plain anchor for a section of this one); external ones
+ * open in a new tab. Pass an `icon` that says where an internal link goes
+ * (down for a section below): the default up-right arrow means "new tab".
  */
 export function PillButton(props: LinkProps | ButtonProps) {
 	const { children, variant = "solid", className, magnetic, icon } = props;
@@ -100,13 +102,13 @@ export function PillButton(props: LinkProps | ButtonProps) {
 			);
 		}
 		return (
-			<Link
+			<InternalLink
 				href={props.href}
 				className={classes}
 				{...magneticProps}
 			>
 				{content(false)}
-			</Link>
+			</InternalLink>
 		);
 	}
 

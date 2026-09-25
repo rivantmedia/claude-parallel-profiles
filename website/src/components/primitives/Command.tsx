@@ -3,8 +3,12 @@ import { CopyButton } from "./CopyButton";
 
 /**
  * A terminal command on a graphite plate, with a copy button. The prompt is
- * decoration (not copied, not read out); long commands wrap at any character
- * rather than scroll, so the whole line is always visible on a phone.
+ * decoration (not copied, not read out). From `sm` up each word of the
+ * command stays whole, so a narrow plate breaks only at a space: browsers
+ * would otherwise break after a hyphen and split the extension id as
+ * "claude-parallel-" / "profiles". On phones, where the id alone is wider
+ * than the plate, it wraps inside a word as a terminal would, rather than
+ * scroll, so the whole line is always visible.
  */
 export function Command({
 	command,
@@ -32,7 +36,12 @@ export function Command({
 				>
 					{prompt}
 				</span>
-				{command}
+				{command.split(" ").map((word, index) => (
+					<span key={index}>
+						{index > 0 && " "}
+						<span className="sm:whitespace-nowrap">{word}</span>
+					</span>
+				))}
 			</code>
 			<CopyButton
 				value={command}

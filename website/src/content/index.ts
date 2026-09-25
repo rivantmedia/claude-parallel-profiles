@@ -16,5 +16,4 @@ export * from "./privacy";
 export * from "./uninstall";
 export * from "./requirements";
 export * from "./switching";
-export * from "./faq";
 export * from "./install";

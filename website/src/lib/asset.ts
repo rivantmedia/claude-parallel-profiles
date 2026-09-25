@@ -12,11 +12,13 @@ export function asset(path: string): string {
 	return `${BASE_PATH}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+/** The deployed site, without a trailing slash (next.config.ts inlines it). */
+const SITE_URL = (
+	process.env.NEXT_PUBLIC_SITE_URL ??
+	"https://rivantmedia.github.io/claude-parallel-profiles"
+).replace(/\/$/, "");
+
 /** The deployed site's absolute URL for a path, for metadata and sitemaps. */
 export function absoluteUrl(path = "/"): string {
-	const site = (
-		process.env.NEXT_PUBLIC_SITE_URL ??
-		"https://rivantmedia.github.io/claude-parallel-profiles"
-	).replace(/\/$/, "");
-	return `${site}${path.startsWith("/") ? path : `/${path}`}`;
+	return `${SITE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 }
