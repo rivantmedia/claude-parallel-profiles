@@ -91,7 +91,7 @@ export const site: Site = {
 	},
 	title: "Claude Parallel Profiles | A Claude account per VS Code window",
 	description:
-		"A companion for the Claude Code extension: run a different Claude account in each VS Code window, at the same time, with one shared conversation history. Linux, macOS, WSL, Remote-SSH and dev containers.",
+		"Run a different Claude account in each VS Code window, at the same time. On Linux, macOS, WSL, Remote-SSH and dev containers.",
 	version: process.env.NEXT_PUBLIC_EXTENSION_VERSION ?? "",
 	lockup: {
 		wordmark: "RIVANT",
@@ -104,8 +104,8 @@ export const site: Site = {
 	},
 	nav: {
 		items: [
-			{ label: "How it works", href: "/#how-it-works", external: false },
-			{ label: "Privacy", href: "/#privacy", external: false },
+			{ label: "How it works", href: "/#demo", external: false },
+			{ label: "Platforms", href: "/#platforms", external: false },
 			{ label: "Changelog", href: links.changelog, external: false }
 		],
 		cta: { label: "Install", href: "/#install", external: false },
@@ -113,7 +113,7 @@ export const site: Site = {
 	},
 	footer: {
 		statement:
-			"Rivant for the Community is Rivant Media’s open-source work, free to use. This one runs a different Claude account in each VS Code window.",
+			"A different Claude account in every VS Code window. Free and open source, from Rivant Media.",
 		original: {
 			before: "A fork of ",
 			link: {

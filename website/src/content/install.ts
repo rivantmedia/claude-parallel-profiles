@@ -1,34 +1,27 @@
 /**
- * The closing call to action: a heading in weight contrast, the install
- * command, the links, the one requirement, and a calm line inviting a rating.
+ * The closing call to action: a heading in weight contrast, the two links,
+ * the install command, the one requirement, and the one warning for people
+ * coming from the original extension.
  */
 import { installCommand, links } from "./links";
-import type { ContrastHeading, Eyebrow, LinkRef, Rich } from "./types";
+import type { ContrastHeading, Eyebrow, LinkRef } from "./types";
 
 export type Install = {
 	readonly id: string;
 	readonly eyebrow: Eyebrow;
 	readonly heading: ContrastHeading;
-	readonly body: Rich;
 	readonly command: {
-		/** Shown above the command. */
-		readonly label: string;
 		readonly text: string;
 		/** Accessible name of the copy button. */
 		readonly copyLabel: string;
 	};
 	readonly primary: LinkRef;
 	readonly secondary: LinkRef;
-	/** The one thing it needs: `before`, the link, then `after`. */
-	readonly requires: {
-		readonly before: string;
-		readonly link: LinkRef;
-		readonly after: string;
-	};
-	readonly rate: {
+	/** Short notes under the command, each ending in a link. */
+	readonly notes: readonly {
 		readonly text: string;
 		readonly link: LinkRef;
-	};
+	}[];
 };
 
 export const install: Install = {
@@ -41,9 +34,7 @@ export const install: Install = {
 		],
 		plain: "Your accounts, side by side."
 	},
-	body: "Free and open source under the MIT License. Install it where Claude Code runs, next to the Claude Code extension; in a WSL or SSH window, that’s the remote side, so run the command below in that window’s integrated terminal.",
 	command: {
-		label: "Or from a terminal",
 		text: installCommand,
 		copyLabel: "Copy the install command"
 	},
@@ -57,21 +48,22 @@ export const install: Install = {
 		href: links.github,
 		external: true
 	},
-	requires: {
-		before: "Requires the",
-		link: {
-			label: "Claude Code extension",
-			href: links.claudeCode,
-			external: true
+	notes: [
+		{
+			text: "Needs the official Claude Code extension.",
+			link: {
+				label: "Get Claude Code",
+				href: links.claudeCode,
+				external: true
+			}
 		},
-		after: ". It is a companion, not a replacement: this one only controls which account each window uses."
-	},
-	rate: {
-		text: "Useful to you? A rating on the Marketplace helps other developers find it.",
-		link: {
-			label: "Rate it on the Marketplace",
-			href: links.rate,
-			external: true
+		{
+			text: "Using Claude Parallel Accounts? Uninstall it first.",
+			link: {
+				label: "How to switch",
+				href: links.switching,
+				external: true
+			}
 		}
-	}
+	]
 };

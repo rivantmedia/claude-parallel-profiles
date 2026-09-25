@@ -1,4 +1,4 @@
-import { DemoIllustration } from "~/components/demo/DemoIllustration";
+import { DemoTour } from "~/components/demo/DemoTour";
 import {
 	Container,
 	Parallax,
@@ -10,12 +10,10 @@ import {
 import { demo } from "~/content";
 
 /**
- * 02, see it. A carbon band (rounded, with the footer shell's faint top
- * highlight) holding the page's one hands-on moment: two VS Code windows on
- * two accounts. Click a status bar, pick an account, watch that window
- * reload onto it while the other keeps its own. The steps and the status
- * bar legend sit under the mock. Dim rings drift off the band's top-right
- * corner, beside the heading.
+ * How it works, shown rather than told: a carbon band (rounded, with the
+ * footer shell's faint top highlight) holding two VS Code windows, where a
+ * tour plays a switch from the status bar. Dim rings drift off the band's
+ * top-right corner, beside the heading.
  */
 export function Demo() {
 	return (
@@ -41,11 +39,10 @@ export function Demo() {
 					id="demo-heading"
 					eyebrow={demo.eyebrow}
 					heading={demo.heading}
-					lead={demo.lead}
 				/>
 
-				<Reveal className="mt-16 md:mt-24">
-					<DemoIllustration />
+				<Reveal className="mt-14 md:mt-20">
+					<DemoTour />
 				</Reveal>
 			</Container>
 		</Section>

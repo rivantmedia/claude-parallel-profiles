@@ -184,9 +184,9 @@
 	transform: none;
 }
 
-/* Controls that only work with the page's scripts (copy buttons, the demo's
-   hint and Reset, the motion toggle) stay out of the way until the scroll
-   layer has started and set html[data-motion]. */
+/* Controls that only work with the page's scripts (copy buttons, the motion
+   toggle) stay out of the way until the scroll layer has started and set
+   html[data-motion]. */
 html:not([data-motion]) .needs-js {
 	display: none;
 }
@@ -194,10 +194,8 @@ html:not([data-motion]) .needs-js {
 /*
  * "Pause motion" (see MotionToggle): everything that loops by itself holds
  * still. Scroll-driven motion is left alone; it only moves when the reader
- * scrolls. !important so it beats the band's own running-under-the-pointer
- * rule.
+ * scrolls. The demo's tour reads the same attribute and holds too.
  */
-html[data-motion-paused] .marquee-track,
 html[data-motion-paused] .live-dot::after,
 html[data-motion-paused] .scroll-cue,
 html[data-motion-paused] .spark-turn {
@@ -437,66 +435,6 @@ html.js-ready .reveal-up[data-inview] {
 	filter: none;
 }
 
-/*
- * Hairline rules draw as sections arrive (see Rule). One-shot on entry
- * (.rule-draw[data-inview]) or scrubbed with the scroll
- * (.rule-scrub[data-progress]). Both grow from the left.
- */
-.rule-draw,
-.rule-scrub {
-	transform-origin: left center;
-}
-
-html.js-ready .rule-draw {
-	transform: scaleX(0);
-	transition: transform 1400ms var(--ease-out-expo);
-	transition-delay: var(--delay, 0ms);
-}
-
-html.js-ready .rule-draw[data-inview] {
-	transform: none;
-}
-
-.rule-scrub {
-	transform: scaleX(clamp(0, calc((var(--progress, 1) - 0.12) / 0.3), 1));
-}
-
-/* ---------------------------------------------------------------- marquee */
-
-@keyframes marquee {
-	to {
-		transform: translate3d(-100%, 0, 0);
-	}
-}
-
-.marquee-track {
-	animation: marquee var(--duration, 40s) linear infinite;
-	animation-direction: var(--direction, normal);
-}
-
-/* Paused for a mouse that is really moving over it; [data-engaged] is set by
-   Marquee, so a loop scrolling under a resting pointer keeps running. */
-.marquee[data-engaged]:hover .marquee-track {
-	animation-play-state: paused;
-}
-
-/*
- * Hollow display type (the band's light italic row). Montserrat's variable
- * glyphs are built from overlapping contours, and a bare text stroke draws
- * every one of them (the A's crossbar as a box across its legs, notches at
- * the R, N and V joins). A void fill painted over the stroke hides those
- * inner lines along with the inner half of the stroke, so the width is
- * doubled to keep the same visible hairline. The stroke is opaque, pre-mixed
- * to what 52% paper over void looks like, so overlaps can't stack. Only for
- * type set on the void ground.
- */
-.text-hollow {
-	color: var(--color-void);
-	paint-order: stroke fill;
-	-webkit-text-stroke: clamp(3px, 0.02em, 5px)
-		color-mix(in srgb, var(--color-paper) 52%, var(--color-void));
-}
-
 /* -------------------------------------------------------------- magnetic */
 
 /* The scroll layer writes --magnetic-x/y (unitless px) on [data-magnetic]
@@ -657,23 +595,17 @@ html.js-ready .rule-draw[data-inview] {
 
 	html.js-ready .reveal .reveal-word,
 	html.js-ready .reveal-scrub .reveal-word,
-	html.js-ready .reveal-up,
-	html.js-ready .rule-draw {
+	html.js-ready .reveal-up {
 		opacity: 1 !important;
 		transform: none !important;
 		filter: none !important;
 		transition: none !important;
 	}
 
-	.rule-scrub {
-		transform: none !important;
-	}
-
 	.parallax-dof {
 		filter: none !important;
 	}
 
-	.marquee-track,
 	.hero-char,
 	.fade-up,
 	.scroll-cue,

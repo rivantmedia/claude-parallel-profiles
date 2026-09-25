@@ -73,11 +73,16 @@ re-run the workflow from the Actions tab.
 - `src/content/`: all of the site's copy, as typed modules. Edit words here.
   `site.ts` holds the name, metadata, nav and footer; `links.ts` every outside
   address. The version comes from the extension's `package.json` at build time.
-- `src/components/sections/`: one component per homepage section, in page order
-  in `src/app/page.tsx`.
+- `src/components/sections/`: the four homepage sections, in page order in
+  `src/app/page.tsx`: Hero, Demo (how it works, as an animation), Platforms and
+  Install. Keep the page short: show how it works rather than explain it.
+- `src/components/demo/`: the animated demo. `DemoTour.tsx` holds the story, one
+  scene per step, with each step's length; the timings inside a step are CSS
+  delays in `Demo.module.css`, so pausing holds them too. The step labels are in
+  `src/content/demo.ts`.
 - `src/components/primitives/`: the design system's building blocks (Section,
   SectionIntro, Container, Eyebrow, Heading, SplitText, Reveal, Parallax, Shape,
-  PillButton, Accordion, Command and more).
+  PillButton, Command, MotionToggle and more).
 - `src/components/providers/Motion.tsx`: the scroll layer behind reveals,
   parallax and magnetic buttons.
 - `src/styles/globals.css`: Rivant Media's tokens (nine greys, type scale,

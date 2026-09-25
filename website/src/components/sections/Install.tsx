@@ -10,31 +10,22 @@ import {
 	Reveal,
 	Section,
 	Shape,
-	SparkTrio,
-	TextLink
+	SparkTrio
 } from "~/components/primitives";
 import { install } from "~/content";
 
 /**
  * The closing moment before the footer, and the page's one big call to
- * action. The content keeps to the left seven columns; the right belongs to
+ * action: the heading, the two buttons, the install command and two short
+ * notes. The content keeps to the left seven columns; the right belongs to
  * the art: the project's three sparks, large, on a near layer that runs a
  * little ahead of the scroll and turns slowly, cropped by the right edge and
- * by the footer's rounded top, with one greyscale shape far behind them. On phones the
- * sparks rise from the bottom edge beneath the content, in room the section's
- * extra bottom padding keeps for them. The sparks are the only accent here.
+ * by the footer's rounded top, with one greyscale shape far behind them. On
+ * phones the sparks rise from the bottom edge beneath the content, in room
+ * the section's extra bottom padding keeps for them.
  */
 export function Install() {
-	const {
-		eyebrow,
-		heading,
-		body,
-		command,
-		primary,
-		secondary,
-		requires,
-		rate
-	} = install;
+	const { eyebrow, heading, command, primary, secondary, notes } = install;
 
 	return (
 		<Section
@@ -48,9 +39,7 @@ export function Install() {
 
 			{/* Far layer: the orbs, lagging the scroll and softened with
 			    distance. From lg they frame the heading from the top-right
-			    corner. Below lg the content runs full width, so they sit low
-			    on the left instead, behind the sparks, cropped by the left
-			    and bottom edges. One shape either way. */}
+			    corner; below lg they sit low on the left, behind the sparks. */}
 			<Parallax
 				depth={200}
 				rotate={-12}
@@ -76,9 +65,7 @@ export function Install() {
 				/>
 			</Parallax>
 
-			{/* Near layer: the sparks, cropped off the right and bottom edges.
-			    Below lg they rise beneath the content, in the room the extra
-			    bottom padding keeps; from lg they sit beside it. */}
+			{/* Near layer: the sparks, cropped off the right and bottom edges. */}
 			<Parallax
 				depth={-160}
 				rotate={-10}
@@ -92,90 +79,58 @@ export function Install() {
 			</Parallax>
 
 			<Container>
-				<Eyebrow>{eyebrow.label}</Eyebrow>
-				<Heading
-					id="install-heading"
-					className="mt-8 md:mt-10"
-					runs={heading.runs}
-				/>
+				<div className="max-w-[44rem]">
+					<Eyebrow>{eyebrow.label}</Eyebrow>
+					<Heading
+						id="install-heading"
+						className="mt-8 md:mt-10"
+						runs={heading.runs}
+					/>
 
-				<div className="mt-10 max-w-[44rem] md:mt-14 lg:max-w-none">
-					<div className="lg:grid lg:grid-cols-12 lg:gap-x-10">
-						<div className="lg:col-span-7">
-							<Reveal>
-								<p className="max-w-[46ch] text-lead text-pretty text-mist">
-									{body}
+					<Reveal className="mt-10 flex flex-wrap items-center gap-3 md:mt-14 md:gap-4">
+						<PillButton
+							href={primary.href}
+							external={primary.external}
+							magnetic
+						>
+							{primary.label}
+						</PillButton>
+						<PillButton
+							href={secondary.href}
+							external={secondary.external}
+							variant="ghost"
+						>
+							{secondary.label}
+						</PillButton>
+					</Reveal>
+
+					<Reveal
+						delay={120}
+						className="mt-8"
+					>
+						<Command
+							command={command.text}
+							label={command.copyLabel}
+						/>
+					</Reveal>
+
+					<Reveal
+						as="ul"
+						delay={200}
+						className="mt-10 grid gap-6 border-t border-slate pt-8 sm:grid-cols-2 sm:gap-10"
+					>
+						{notes.map((note) => (
+							<li key={note.text}>
+								<p className="text-[0.9375rem] leading-relaxed text-mist">
+									{note.text}
 								</p>
-							</Reveal>
-
-							<Reveal
-								delay={120}
-								className="mt-10 flex flex-wrap items-center gap-3 md:mt-12 md:gap-4"
-							>
-								<PillButton
-									href={primary.href}
-									external={primary.external}
-									magnetic
-								>
-									{primary.label}
-								</PillButton>
-								<PillButton
-									href={secondary.href}
-									external={secondary.external}
-									variant="ghost"
-								>
-									{secondary.label}
-								</PillButton>
-							</Reveal>
-
-							<Reveal
-								delay={200}
-								className="mt-12 max-w-[44rem] md:mt-14"
-							>
-								<p
-									id="install-command"
-									className="text-eyebrow font-semibold text-ash uppercase"
-								>
-									{command.label}
-								</p>
-								<div
-									role="group"
-									aria-labelledby="install-command"
-								>
-									<Command
-										command={command.text}
-										label={command.copyLabel}
-										className="mt-4"
-									/>
-								</div>
-							</Reveal>
-
-							<Reveal
-								delay={260}
-								className="mt-14 grid max-w-[44rem] gap-8 border-t border-slate pt-8 sm:grid-cols-2 sm:gap-10 md:mt-16"
-							>
-								<p className="text-[0.9375rem] leading-relaxed text-pretty text-mist">
-									{requires.before}{" "}
-									<TextLink
-										href={requires.link.href}
-										external={requires.link.external}
-									>
-										{requires.link.label}
-									</TextLink>
-									{requires.after}
-								</p>
-								<div>
-									<p className="text-[0.9375rem] leading-relaxed text-pretty text-mist">
-										{rate.text}
-									</p>
-									<ArrowLink
-										link={rate.link}
-										className="mt-2"
-									/>
-								</div>
-							</Reveal>
-						</div>
-					</div>
+								<ArrowLink
+									link={note.link}
+									className="mt-1"
+								/>
+							</li>
+						))}
+					</Reveal>
 				</div>
 			</Container>
 		</Section>

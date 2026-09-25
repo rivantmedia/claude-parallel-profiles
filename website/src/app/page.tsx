@@ -1,17 +1,13 @@
-import { Band } from "~/components/sections/Band";
 import { Demo } from "~/components/sections/Demo";
 import { Hero } from "~/components/sections/Hero";
-import { History } from "~/components/sections/History";
-import { HowItWorks } from "~/components/sections/HowItWorks";
-import { Idea } from "~/components/sections/Idea";
 import { Install } from "~/components/sections/Install";
-import { Privacy } from "~/components/sections/Privacy";
-import { QuickStart } from "~/components/sections/QuickStart";
-import { Requirements } from "~/components/sections/Requirements";
-import { Switching } from "~/components/sections/Switching";
-import { Uninstall } from "~/components/sections/Uninstall";
+import { Platforms } from "~/components/sections/Platforms";
 
-/** The whole story, top to bottom. Each section owns its id (the nav's anchors). */
+/**
+ * The whole story, kept short: what it is, how it works (shown, not told),
+ * where it runs, and how to get it. Each section owns its id (the nav's
+ * anchors).
+ */
 export default function Home() {
 	return (
 		<main
@@ -19,16 +15,8 @@ export default function Home() {
 			tabIndex={-1}
 		>
 			<Hero />
-			<Band />
-			<Idea />
 			<Demo />
-			<QuickStart />
-			<History />
-			<HowItWorks />
-			<Privacy />
-			<Uninstall />
-			<Requirements />
-			<Switching />
+			<Platforms />
 			<Install />
 		</main>
 	);

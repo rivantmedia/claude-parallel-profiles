@@ -87,26 +87,6 @@ export function Code({
 	);
 }
 
-/** A key or shortcut: a raised keycap. <Kbd>Ctrl</Kbd>+<Kbd>Shift</Kbd>+<Kbd>P</Kbd> */
-export function Kbd({
-	children,
-	className
-}: {
-	children: React.ReactNode;
-	className?: string;
-}) {
-	return (
-		<kbd
-			className={cx(
-				"inline-block min-w-[1.8em] rounded-md bg-graphite px-[0.45em] py-[0.1em] text-center font-mono text-[0.82em] text-bone shadow-[inset_0_-2px_0_0_var(--color-slate)] ring-1 ring-slate ring-inset",
-				className
-			)}
-		>
-			{children}
-		</kbd>
-	);
-}
-
 /**
  * Copy with `backtick spans` (the content modules' Rich strings) rendered
  * as inline code. Nothing else is parsed.

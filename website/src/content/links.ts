@@ -10,6 +10,8 @@ type Links = {
 	readonly issues: string;
 	readonly license: string;
 	readonly original: string;
+	/** The README's steps for moving over from the original extension. */
+	readonly switching: string;
 	readonly claudeCode: string;
 	readonly rivant: string;
 	/** Site-relative: use it with next/link, which adds the base path. */
@@ -25,6 +27,8 @@ export const links: Links = {
 	license:
 		"https://github.com/rivantmedia/claude-parallel-profiles/blob/main/LICENSE",
 	original: "https://github.com/DercasDrol/claude-parallel-profiles",
+	switching:
+		"https://github.com/rivantmedia/claude-parallel-profiles#switching-from-the-original-extension",
 	claudeCode:
 		"https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code",
 	rivant: "https://rivant.in",

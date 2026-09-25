@@ -13,13 +13,13 @@
 	/* The sparks' box on phones and tablets; its height is 164/188 of its
 	   width. */
 	--sparks-w: min(46vw, 15rem);
-	/* Room above the figures line for the sparks. */
+	/* Room above the headline for the sparks. */
 	padding-top: calc(var(--sparks-w) * 0.8723 + 2.75rem);
 }
 
 /*
  * Phones and tablets: the first line fills (or nearly fills) the width, so
- * the sparks sit above the figures line, against the right edge. From lg the
+ * the sparks sit above the headline, against the right edge. From lg the
  * first line leaves the right fifth free, so they move beside it: their box
  * starts past the end of "Claude Parallel" (about 6.74em at rest, plus room
  * for the pointer swelling its last letters) and sits level with the
@@ -34,10 +34,8 @@
 }
 
 /*
- * Tablets: the platforms line has moved down under the command, so the top
- * row holds only the eyebrows, on the left. The sparks, a size smaller, rise
- * beside them into that empty right-hand side, which keeps the name, the
- * promise and the buttons higher up the screen.
+ * Tablets: the sparks, a size smaller, with less room kept above the name,
+ * which keeps the name, the sentence and the buttons higher up the screen.
  */
 @media (min-width: 48rem) {
 	.content {
@@ -54,7 +52,7 @@
 
 /*
  * Short screens (a phone on its side): smaller sparks and less room above
- * the figures line, so the name reaches the first screen.
+ * the headline, so the name reaches the first screen.
  */
 @media (max-height: 30rem) {
 	.content {

@@ -19,17 +19,22 @@ function subscribe(notify: () => void) {
 
 const isPaused = () => document.documentElement.hasAttribute(ATTRIBUTE);
 
+/** Whether the reader has paused the page's motion (see MotionToggle). */
+export function useMotionPaused() {
+	return useSyncExternalStore(subscribe, isPaused, () => false);
+}
+
 /**
- * Pauses and resumes everything on the page that moves by itself: the band's
- * looping rows, the sparks' slow turn, the live dots' pulse, the scroll cue
- * and the demo's caret (WCAG 2.2.2). It sets html[data-motion-paused], which
- * the CSS reads, and remembers the choice in this browser (the inline boot
- * script restores it before first paint). Scroll-driven motion isn't
- * affected: it only moves when the reader scrolls. Hidden with reduced
- * motion, where nothing loops, and without scripts, where it can't work.
+ * Pauses and resumes everything on the page that moves by itself: the demo's
+ * tour, the sparks' slow turn, the live dots' pulse and the scroll cue
+ * (WCAG 2.2.2). It sets html[data-motion-paused], which the CSS and the demo
+ * read, and remembers the choice in this browser (the inline boot script
+ * restores it before first paint). Scroll-driven motion isn't affected: it
+ * only moves when the reader scrolls. Hidden with reduced motion, where
+ * nothing loops, and without scripts, where it can't work.
  */
 export function MotionToggle({ className }: { className?: string }) {
-	const paused = useSyncExternalStore(subscribe, isPaused, () => false);
+	const paused = useMotionPaused();
 	const Icon = paused ? PlayIcon : PauseIcon;
 
 	function toggle() {

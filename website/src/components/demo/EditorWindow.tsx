@@ -1,5 +1,3 @@
-"use client";
-
 import {
 	ArrowUpIcon,
 	BellIcon,
@@ -10,7 +8,6 @@ import {
 	FilesIcon,
 	GearSixIcon,
 	GitBranchIcon,
-	InfoIcon,
 	MagnifyingGlassIcon,
 	SquaresFourIcon,
 	UserCircleIcon,
@@ -18,140 +15,82 @@ import {
 	XCircleIcon,
 	XIcon
 } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
 import { RichText } from "~/components/primitives/Code";
-import { demo, type DemoWindow } from "~/content";
+import { demo, type DemoMessage, type DemoWindow } from "~/content";
 import { cx } from "~/lib/cx";
 import { CodeLines } from "./CodeLines";
 import { Codicons, fill } from "./codicons";
+import { Cursor } from "./Cursor";
 import styles from "./Demo.module.css";
 import { QuickPick } from "./QuickPick";
 
-/** How long the pointer rests on the item before the hover card shows. */
-const CARD_DELAY_MS = 450;
 /**
- * How long the card waits after the pointer leaves the item (or the card)
- * before it goes, so the pointer can cross onto the card and stay there.
+ * What the window's Claude Code panel shows in a step:
+ * - `empty`: no conversation yet.
+ * - `thinking`: the question, and Claude working on it.
+ * - `answers`: the same, and the answer arrives.
+ * - `plays`: the whole exchange plays out, from the question on.
  */
-const CARD_GRACE_MS = 300;
+export type ChatMode = "empty" | "thinking" | "answers" | "plays";
+
+/** When things happen within a step, in ms (see Demo.module.css). */
+const AT = {
+	/** The pointer's click on the status bar item; the quick pick drops in. */
+	click: 1100,
+	/** `answers`: the answer replaces the working dots. */
+	answer: 1300,
+	/** `plays`: the question, the working dots, then the answer. */
+	ask: 500,
+	working: 1100,
+	reply: 2900
+} as const;
+
+const ms = (value: number) => `${value}ms`;
 
 /**
  * One VS Code window, drawn in the brand's greys: title bar, activity bar,
- * explorer, editor, a Claude Code panel with an example exchange, and the
- * status bar with the extension's account item. Everything but that item
- * (and the quick pick it opens) is a picture, hidden from assistive tech;
- * a one-line summary says what the window shows.
+ * explorer, editor, a Claude Code panel, and the status bar with the
+ * extension's account item. A picture, hidden from assistive tech: the tour
+ * around it (DemoTour) says what it shows. What changes from step to step
+ * comes in as props; the timings within a step are CSS delays, so a paused
+ * tour pauses them too.
  */
 export function EditorWindow({
 	win,
 	account,
-	open,
+	chat,
+	pointer,
+	pick,
 	reloading,
-	toast,
-	reduced,
-	onOpen,
-	onClose,
-	onChoose,
-	onPoint,
+	restart,
 	className
 }: {
 	win: DemoWindow;
-	/** The account the window runs right now. */
+	/** The account the window runs. */
 	account: string;
-	/** Its quick pick is open. */
-	open: boolean;
+	chat: ChatMode;
+	/** The pointer comes to the status bar item and clicks it. */
+	pointer: boolean;
+	/** The account quick pick: dropping in, open with the pointer on the other account, or closed. */
+	pick: "opening" | "choosing" | null;
 	reloading: boolean;
-	/** A notification in the corner, if any. */
-	toast: string | null;
-	reduced: boolean;
-	onOpen: () => void;
-	onClose: () => void;
-	onChoose: (email: string) => void;
-	/** The status bar item is under the pointer or has focus. */
-	onPoint: (pointing: boolean) => void;
+	/** Changes when a step (re)starts, so its animations play again. */
+	restart: number;
 	className?: string;
 }) {
-	const { statusBar, hoverCard, panel, accounts } = demo;
-	const button = useRef<HTMLButtonElement>(null);
-	const cardTimer = useRef<number | undefined>(undefined);
-	const [card, setCard] = useState(false);
-	const listId = `demo-${win.key}-accounts`;
 	const cursorLine = Number(/Ln (\d+)/.exec(win.cursor)?.[1] ?? 0);
-
-	useEffect(() => () => window.clearTimeout(cardTimer.current), []);
-
-	// Escape dismisses the hover card without moving the pointer, as VS
-	// Code's own hovers do.
-	useEffect(() => {
-		if (!card) return;
-		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key !== "Escape") return;
-			window.clearTimeout(cardTimer.current);
-			setCard(false);
-		};
-		document.addEventListener("keydown", onKeyDown);
-		return () => document.removeEventListener("keydown", onKeyDown);
-	}, [card]);
-
-	function hideCard() {
-		window.clearTimeout(cardTimer.current);
-		setCard(false);
-	}
-
-	/** Hides the card after a short grace, which a pointer on the card cancels. */
-	function hideCardSoon() {
-		window.clearTimeout(cardTimer.current);
-		cardTimer.current = window.setTimeout(
-			() => setCard(false),
-			CARD_GRACE_MS
-		);
-	}
-
-	function keepCard() {
-		window.clearTimeout(cardTimer.current);
-	}
-
-	function close(restore: boolean) {
-		onClose();
-		if (restore) button.current?.focus({ preventScroll: true });
-	}
-
-	function choose(email: string) {
-		button.current?.focus({ preventScroll: true });
-		onChoose(email);
-	}
-
-	function activate() {
-		hideCard();
-		if (reloading) return;
-		if (open) onClose();
-		else onOpen();
-	}
-
-	function onKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
-		if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-			event.preventDefault();
-			if (!open && !reloading) onOpen();
-		}
-	}
 
 	return (
 		<div
-			role="group"
-			aria-label={`${win.label}, ${win.project}`}
+			aria-hidden="true"
 			className={cx(
 				styles.window,
 				"relative flex flex-col overflow-hidden rounded-2xl bg-graphite",
 				className
 			)}
 		>
-			<p className="sr-only">{win.summary}</p>
-
 			{/* Title bar */}
-			<div
-				aria-hidden="true"
-				className="relative flex h-9 shrink-0 items-center border-b border-slate px-3.5"
-			>
+			<div className="relative flex h-9 shrink-0 items-center border-b border-slate px-3.5">
 				<span className="flex gap-2">
 					{[0, 1, 2].map((dot) => (
 						<span
@@ -169,9 +108,8 @@ export function EditorWindow({
 			{/* Body: remounts on a switch, so it comes back like a reloaded window. */}
 			<div
 				key={account}
-				aria-hidden="true"
 				className={cx(
-					!reduced && styles.boot,
+					styles.boot,
 					"grid min-h-0 grid-cols-[2.5rem_minmax(0,1fr)] md:h-[20rem] md:grid-cols-[2.75rem_9.5rem_minmax(0,1fr)_14rem] lg:h-[21.5rem] lg:grid-cols-[2.75rem_minmax(0,1fr)_12rem] xl:grid-cols-[2.75rem_9.5rem_minmax(0,1fr)_12.5rem]"
 				)}
 			>
@@ -288,67 +226,25 @@ export function EditorWindow({
 				</div>
 
 				{/* Claude Code panel */}
-				<div className="flex min-w-0 flex-col border-t border-slate md:border-t-0 md:border-l">
+				<div className="flex min-h-[11rem] min-w-0 flex-col border-t border-slate md:min-h-0 md:border-t-0 md:border-l">
 					<div className="flex h-8 shrink-0 items-center justify-between px-3 text-[0.625rem] font-medium tracking-[0.08em] text-ash uppercase">
-						{panel.title}
+						{demo.panelTitle}
 						<DotsThreeIcon
 							weight="light"
 							className="size-3.5"
 						/>
 					</div>
-					<div className="flex flex-1 flex-col gap-3 px-3 pt-1 pb-3 text-[0.71875rem] leading-[1.55]">
-						{win.chat.map((message, index) =>
-							message.from === "you" ? (
-								<p
-									key={index}
-									className="ml-4 rounded-lg bg-white/[0.05] px-2.5 py-2 text-bone ring-1 ring-slate ring-inset"
-								>
-									{message.text}
-								</p>
-							) : (
-								<p
-									key={index}
-									className={cx(
-										styles.reply,
-										"flex gap-2 text-mist"
-									)}
-								>
-									<span className="mt-[0.5em] size-1.5 shrink-0 rounded-full bg-ash" />
-									<span>
-										<RichText text={message.text} />
-									</span>
-								</p>
-							)
-						)}
-						<div className="mt-auto flex h-9 items-center justify-between rounded-lg bg-carbon pr-1 pl-2.5 ring-1 ring-slate ring-inset">
-							<span
-								className={cx(
-									styles.caret,
-									"h-3.5 w-px bg-mist"
-								)}
-							/>
-							<span className="grid size-7 place-items-center rounded-md bg-white/[0.06] text-ash">
-								<ArrowUpIcon
-									weight="light"
-									className="size-3.5"
-								/>
-							</span>
-						</div>
-					</div>
+					<Chat
+						key={restart}
+						messages={win.chat}
+						mode={chat}
+					/>
 				</div>
 			</div>
 
 			{/* Status bar */}
-			<div
-				className={cx(
-					styles.status,
-					"relative flex h-7 shrink-0 items-stretch justify-between border-t border-slate bg-graphite pl-2 text-[0.6875rem] text-ash"
-				)}
-			>
-				<span
-					aria-hidden="true"
-					className="flex items-center gap-3"
-				>
+			<div className="relative flex h-7 shrink-0 items-stretch justify-between border-t border-slate bg-graphite pl-2 text-[0.6875rem] text-ash">
+				<span className="flex items-center gap-3">
 					<span className="flex items-center gap-1">
 						<GitBranchIcon
 							weight="light"
@@ -370,65 +266,35 @@ export function EditorWindow({
 					</span>
 				</span>
 				<span className="flex min-w-0 items-stretch">
-					<span
-						aria-hidden="true"
-						className="hidden items-center gap-3 pr-3 md:flex lg:hidden xl:flex"
-					>
+					<span className="hidden items-center gap-3 pr-3 md:flex lg:hidden xl:flex">
 						<span>{win.cursor}</span>
 						<span className="hidden 2xl:inline">UTF-8</span>
 						<span>{win.language}</span>
 					</span>
-					<button
-						ref={button}
-						type="button"
-						aria-haspopup="listbox"
-						aria-expanded={open}
-						aria-controls={open ? listId : undefined}
-						aria-disabled={reloading || undefined}
-						onClick={activate}
-						onKeyDown={onKeyDown}
-						onFocus={() => onPoint(true)}
-						onBlur={() => onPoint(false)}
-						onPointerEnter={(event) => {
-							onPoint(true);
-							if (event.pointerType !== "mouse" || open) return;
-							window.clearTimeout(cardTimer.current);
-							// Back from the card: it is already showing.
-							if (card) return;
-							cardTimer.current = window.setTimeout(
-								() => setCard(true),
-								CARD_DELAY_MS
-							);
-						}}
-						onPointerLeave={() => {
-							// The pointer may be on its way onto the card.
-							if (card) hideCardSoon();
-							else hideCard();
-							if (document.activeElement !== button.current)
-								onPoint(false);
-						}}
+					{/* The extension's account item. It lights as the pointer
+					    clicks it, and stays lit while its quick pick is open. */}
+					<span
+						key={pointer ? restart : "item"}
 						className={cx(
-							styles.item,
-							"relative flex min-w-0 items-center gap-2 px-2.5 outline-offset-[-2px] transition-colors duration-300 ease-spring before:absolute before:inset-x-0 before:-top-4 before:bottom-0 before:content-[''] hover:bg-white/[0.08] hover:text-paper",
-							open ? "bg-white/[0.08] text-paper" : "text-bone"
+							pointer && styles.clicked,
+							"relative flex min-w-0 items-center gap-2 px-2.5",
+							pick ? "bg-white/[0.08] text-paper" : "text-bone"
 						)}
 					>
-						<span
-							aria-hidden="true"
-							className={cx("live-dot shrink-0", styles.dot)}
-						/>
-						<span className="sr-only">
-							{win.label}, {statusBar.itemName}:{" "}
-						</span>
+						<span className={cx("live-dot shrink-0", styles.dot)} />
 						<Codicons
-							text={fill(statusBar.format, { email: account })}
+							text={fill(demo.statusBar, { email: account })}
 							className="min-w-0"
 						/>
-					</button>
-					<span
-						aria-hidden="true"
-						className="flex items-center px-2.5"
-					>
+						{pointer && (
+							<Cursor
+								key={restart}
+								from="above"
+								className="top-[22%] left-[58%]"
+							/>
+						)}
+					</span>
+					<span className="flex items-center px-2.5">
 						<BellIcon
 							weight="light"
 							className="size-3.5"
@@ -437,79 +303,18 @@ export function EditorWindow({
 				</span>
 			</div>
 
-			{open && (
+			{pick && (
 				<QuickPick
-					id={listId}
+					key={pick === "opening" ? restart : "open"}
 					current={account}
-					anchor={button}
-					onChoose={choose}
-					onClose={close}
+					opening={pick === "opening"}
+					pointer={pick === "choosing"}
+					restart={restart}
 				/>
 			)}
 
-			{/* Hoverable: the pointer can move onto it and stay, and Escape
-			    dismisses it. */}
-			{card && !open && !reloading && (
+			{reloading && (
 				<div
-					aria-hidden="true"
-					onPointerEnter={keepCard}
-					onPointerLeave={hideCardSoon}
-					className={cx(
-						styles.pop,
-						"absolute right-2 bottom-9 z-30 w-[min(calc(100%-1rem),19rem)] rounded-lg bg-carbon p-3 text-[0.6875rem] leading-relaxed text-mist ring-1 ring-smoke/70"
-					)}
-				>
-					<Codicons
-						text={`$(account) ${hoverCard.title}`}
-						className="font-semibold text-paper"
-					/>
-					<p className="mt-2 font-semibold text-paper">{account}</p>
-					<p className="mt-1.5">{hoverCard.runs}</p>
-					<p className="mt-1.5">
-						{fill(hoverCard.saved, { count: "" })}
-						<strong className="font-semibold text-bone">
-							{accounts.length}
-						</strong>
-					</p>
-					<p className="mt-2 flex flex-wrap items-center gap-x-2 text-bone">
-						<Codicons
-							text={`$(arrow-swap) ${hoverCard.actions.switch}`}
-						/>
-						<span className="text-ash">·</span>
-						<Codicons
-							text={`$(trash) ${hoverCard.actions.forget}`}
-						/>
-					</p>
-					<span className="my-2.5 block h-px bg-slate" />
-					<p className="flex flex-wrap items-center gap-x-2">
-						<Codicons
-							text={`$(extensions) ${hoverCard.links.extension}`}
-						/>
-						<span className="text-ash">·</span>
-						<Codicons text={`$(output) ${hoverCard.links.log}`} />
-					</p>
-				</div>
-			)}
-
-			{toast && !open && (
-				<div
-					aria-hidden="true"
-					className={cx(
-						styles.pop,
-						"absolute right-2 bottom-9 z-30 flex w-[min(calc(100%-1rem),19rem)] items-start gap-2 rounded-lg bg-carbon px-3 py-2.5 text-[0.6875rem] leading-snug text-bone ring-1 ring-smoke/70"
-					)}
-				>
-					<InfoIcon
-						weight="light"
-						className="mt-px size-3.5 shrink-0 text-mist"
-					/>
-					{toast}
-				</div>
-			)}
-
-			{reloading && !reduced && (
-				<div
-					aria-hidden="true"
 					className={cx(
 						styles.reload,
 						"absolute inset-x-0 top-9 bottom-0 z-40 grid place-items-center bg-graphite"
@@ -520,10 +325,101 @@ export function EditorWindow({
 							weight="light"
 							className={cx(styles.spin, "size-4 text-ash")}
 						/>
-						{demo.reload.overlay}
+						{demo.reloading}
 					</span>
 				</div>
 			)}
+		</div>
+	);
+}
+
+/** The panel's conversation for one step, per `mode` (see ChatMode). */
+function Chat({
+	messages,
+	mode
+}: {
+	messages: readonly [DemoMessage, DemoMessage];
+	mode: ChatMode;
+}) {
+	const [ask, reply] = messages;
+	const plays = mode === "plays";
+
+	return (
+		<div className="flex flex-1 flex-col gap-3 px-3 pt-1 pb-3 text-[0.71875rem] leading-[1.55]">
+			{mode !== "empty" && (
+				<p
+					className={cx(
+						plays && styles.enter,
+						"ml-4 rounded-lg bg-white/[0.05] px-2.5 py-2 text-bone ring-1 ring-slate ring-inset"
+					)}
+					style={plays ? { animationDelay: ms(AT.ask) } : undefined}
+				>
+					{ask.text}
+				</p>
+			)}
+			{mode !== "empty" && (
+				<p
+					className={cx(
+						plays && styles.enter,
+						"grid text-mist [&>*]:[grid-area:1/1]"
+					)}
+					style={
+						plays ? { animationDelay: ms(AT.working) } : undefined
+					}
+				>
+					{/* Claude at work, then its answer in the same place (the
+					    answer's height is kept from the start, so nothing
+					    jumps). `thinking` never gets past the dots. */}
+					<span
+						className={cx(
+							styles.working,
+							mode !== "thinking" && styles.done
+						)}
+						style={
+							mode === "thinking"
+								? undefined
+								: {
+										animationDelay: ms(
+											plays ? AT.reply : AT.answer
+										)
+									}
+						}
+					>
+						<span />
+						<span />
+						<span />
+					</span>
+					<span
+						className={cx(
+							"flex gap-2",
+							mode === "thinking" ? "invisible" : styles.answer
+						)}
+						style={
+							mode === "thinking"
+								? undefined
+								: {
+										animationDelay: ms(
+											plays ? AT.reply : AT.answer
+										)
+									}
+						}
+					>
+						<span className="mt-[0.5em] size-1.5 shrink-0 rounded-full bg-ash" />
+						<span>
+							<RichText text={reply.text} />
+						</span>
+					</span>
+				</p>
+			)}
+			<div className="mt-auto flex h-9 items-center justify-between rounded-lg bg-carbon pr-1 pl-2.5 ring-1 ring-slate ring-inset">
+				<span className={cx(styles.caret, "h-3.5 w-px bg-mist")} />
+				<span className="grid size-7 place-items-center rounded-md bg-white/[0.06] text-ash">
+					<ArrowUpIcon
+						weight="light"
+						className="size-3.5"
+					/>
+				</span>
+			</div>
 		</div>
 	);
 }

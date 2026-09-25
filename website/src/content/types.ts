@@ -46,25 +46,3 @@ export type LinkRef = {
 	readonly href: string;
 	readonly external: boolean;
 };
-
-/** A titled point: a list item, a card or a step. */
-export type Point = {
-	readonly title: string;
-	readonly body: Rich;
-};
-
-/** A point with a one-line summary and a fuller body, for expandable lists. */
-export type Detail = {
-	readonly title: string;
-	readonly summary: Rich;
-	/** Paragraphs, in order. */
-	readonly body: readonly Rich[];
-};
-
-/** The opening of a homepage section. `id` is the anchor the nav links to. */
-export type SectionIntro = {
-	readonly id: string;
-	readonly eyebrow: Eyebrow;
-	readonly heading: ContrastHeading;
-	readonly lead: Rich;
-};
